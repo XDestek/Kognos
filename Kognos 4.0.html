@@ -1,0 +1,2853 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kognos — Leitor de Ergonomia Cognitiva e Oculomotora</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Marked.js para interpretar Markdown gerado pelo Gemini -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- PDF.js para extração e reconstrução de texto de documentos PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Google Fonts: Lexend & Atkinson Hyperlegible -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Lexend:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #F4F1EA;
+            --bg-secondary: #EAE6DF;
+            --bg-surface: #E4DFD5;
+            --text-primary: #1E1E1E;
+            --text-secondary: #252525;
+            --text-muted: #5A5751;
+            --border-color: #D2CCC0;
+            --accent-color: #3D5A45;
+            --accent-soft: #C8D3CA;
+            
+            /* Variáveis dinâmicas de leitura */
+            --reader-font: 'Atkinson Hyperlegible', sans-serif;
+            --reader-size: 18px;
+            --reader-leading: 1.5;
+            --reader-measure: 54ch;
+            --reader-unfocused-opacity: 0.30;
+            --paper-texture-opacity: 0.25;
+        }
+
+        /* Tema Cinza-Claro (#EAE6DF) alternativo */
+        body.surface-warm-grey {
+            --bg-primary: #EAE6DF;
+            --bg-secondary: #DFDBD2;
+            --bg-surface: #D6D1C7;
+            --text-primary: #252525;
+            --border-color: #C5BFB3;
+        }
+
+        /* Regras utilitárias explícitas de segurança para tela cheia */
+        .hidden {
+            display: none !important;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: text;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--reader-font);
+            transition: background-color 0.25s ease, color 0.25s ease;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            min-height: 100dvh;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        /* Bloqueio total de rolagem na visualização de leitura estática */
+        body.reading-mode-active {
+            overflow: hidden !important;
+            height: 100vh;
+            height: 100dvh;
+            width: 100vw;
+        }
+
+        /* Tipografia estrita da Mancha Gráfica (50 a 75 caracteres) */
+        .ergo-reading-column {
+            font-family: var(--reader-font);
+            font-size: var(--reader-size);
+            line-height: var(--reader-leading);
+            max-width: var(--reader-measure);
+            width: 100%;
+            padding-right: 2.5rem;
+            text-align: left !important; /* Proibido justificar para evitar rios brancos */
+            letter-spacing: 0.012em;
+            word-spacing: 0.04em;
+        }
+
+        .double-page-spread #static-page-content {
+            padding-left: 2.5rem;
+            padding-right: 0.25rem;
+        }
+
+        .double-page-spread #static-page-content-right {
+            padding-left: 0.25rem;
+            padding-right: 2.5rem;
+        }
+
+        /* Layout de Página Dupla (Livro Aberto) */
+        .double-page-spread {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+            gap: 1.75rem;
+            align-items: start;
+            justify-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .book-spine-divider {
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                var(--border-color) 10%,
+                var(--border-color) 90%,
+                transparent 100%
+            );
+        }
+
+        @media (max-width: 860px) {
+            .double-page-spread {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 1rem;
+            }
+            .book-spine-divider,
+            #static-page-content-right {
+                display: none !important;
+            }
+        }
+
+        /* Isolamento de Bloco Lógico sem deslocamento espacial (Zero Layout Shift) */
+        .ergo-paragraph {
+            position: relative;
+            padding-left: 1.25rem;
+            margin-top: 0;
+            margin-bottom: 1.25em;
+            border-left: 3px solid transparent;
+            transition: opacity 0.18s ease-out, border-color 0.18s ease-out;
+            cursor: pointer;
+            text-align: left !important;
+        }
+
+        .ergo-paragraph:last-child {
+            margin-bottom: 0;
+        }
+
+        .ergo-paragraph.is-focused {
+            opacity: 1 !important;
+            border-left-color: var(--accent-color);
+        }
+
+        .ergo-paragraph.is-unfocused {
+            opacity: var(--reader-unfocused-opacity);
+        }
+
+        /* Estilos de formatação Markdown injetada */
+        .ergo-paragraph h1, .ergo-paragraph h2, .ergo-paragraph h3, .ergo-paragraph h4 { font-weight: bold; margin-bottom: 0.5em; line-height: 1.3; color: var(--text-primary); }
+        .ergo-paragraph h1 { font-size: 1.45em; }
+        .ergo-paragraph h2 { font-size: 1.3em; }
+        .ergo-paragraph h3 { font-size: 1.15em; }
+        .ergo-paragraph p { margin-bottom: 0.5em; }
+        .ergo-paragraph p:last-child { margin-bottom: 0; }
+        .ergo-paragraph ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.5em; }
+        .ergo-paragraph ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.5em; }
+        .ergo-paragraph li { margin-bottom: 0.35em; }
+        .ergo-paragraph strong { font-weight: 600; color: var(--text-primary); }
+        .ergo-paragraph em { font-style: italic; }
+        .ergo-paragraph blockquote { border-left: 3px solid var(--border-color); padding-left: 1em; color: var(--text-muted); font-style: italic; }
+        .ergo-paragraph a { text-decoration: underline; color: var(--accent-color); }
+        .ergo-paragraph code { font-family: monospace; background-color: var(--bg-surface); padding: 0.1em 0.3em; border-radius: 4px; font-size: 0.9em; }
+
+        /* Visão panorâmica opcional da página inteira */
+        .all-paragraphs-visible .ergo-paragraph {
+            opacity: 1 !important;
+            border-left-color: transparent;
+        }
+
+        /* Textura de Papel Global (Ruído Fractal SVG) */
+        body.paper-texture-active::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='1.6' intercept='-0.3'/%3E%3CfeFuncG type='linear' slope='1.6' intercept='-0.3'/%3E%3CfeFuncB type='linear' slope='1.6' intercept='-0.3'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.48'/%3E%3C/svg%3E");
+            opacity: var(--paper-texture-opacity);
+            mix-blend-mode: multiply;
+            transition: opacity 0.2s ease;
+        }
+
+        /* Marcações de destaque ergonômicas (preservam contraste e compatibilidade com BeeLine) */
+        mark.ergo-highlight {
+            color: inherit;
+            padding: 0.06em 0;
+            border-radius: 3px;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+            cursor: pointer;
+            transition: filter 0.15s ease;
+        }
+        mark.ergo-highlight:hover {
+            filter: brightness(0.95);
+        }
+        mark.ergo-highlight[data-hl-color="yellow"] {
+            background-color: rgba(245, 197, 24, 0.38);
+        }
+        mark.ergo-highlight[data-hl-color="green"] {
+            background-color: rgba(92, 158, 114, 0.30);
+        }
+        mark.ergo-highlight[data-hl-color="coral"] {
+            background-color: rgba(224, 108, 117, 0.28);
+        }
+
+        /* Gatilho e caixa lateral expansível de comentário ancorados ao parágrafo */
+        .ergo-comment-anchor {
+            position: absolute;
+            top: 0.15rem;
+            z-index: 25;
+            display: flex;
+            align-items: center;
+        }
+        .ergo-comment-anchor.side-right {
+            left: calc(100% + 0.35rem);
+        }
+        .ergo-comment-anchor.side-left {
+            right: calc(100% + 0.35rem);
+        }
+        .ergo-comment-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.75rem;
+            height: 1.75rem;
+            padding: 0;
+            border-radius: 9999px;
+            background-color: var(--bg-primary);
+            border: 1.5px solid var(--accent-color);
+            color: var(--accent-color);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+            transition: transform 0.12s ease, background-color 0.15s ease, color 0.15s ease;
+        }
+        .ergo-comment-toggle-btn:hover,
+        .ergo-comment-toggle-btn.is-open {
+            background-color: var(--accent-color);
+            color: #F4F1EA;
+            transform: scale(1.06);
+        }
+        .ergo-comment-popover {
+            position: fixed;
+            z-index: 60;
+            width: 16rem;
+            max-width: calc(100vw - 24px);
+            padding: 0.7rem 0.8rem;
+            border-radius: 0.85rem;
+            background-color: var(--bg-primary);
+            border: 1.5px solid var(--border-color);
+            border-left: 3px solid var(--accent-color);
+            font-size: 0.8rem;
+            line-height: 1.45;
+            color: var(--text-secondary);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.16);
+            cursor: default;
+            text-align: left;
+        }
+        @media (max-width: 860px) {
+            .double-page-spread #static-page-content {
+                padding-left: 0;
+                padding-right: 2.5rem;
+            }
+            .ergo-comment-anchor.side-left {
+                right: auto;
+                left: calc(100% + 0.35rem);
+            }
+        }
+
+        /* Âncoras topográficas nos 4 cantos da página fixa para indexação espacial no hipocampo */
+        .spatial-anchor {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-color: var(--border-color);
+            pointer-events: none;
+        }
+        .anchor-tl { top: 12px; left: 12px; border-top: 2px solid var(--border-color); border-left: 2px solid var(--border-color); }
+        .anchor-tr { top: 12px; right: 12px; border-top: 2px solid var(--border-color); border-right: 2px solid var(--border-color); }
+        .anchor-bl { bottom: 12px; left: 12px; border-bottom: 2px solid var(--border-color); border-left: 2px solid var(--border-color); }
+        .anchor-br { bottom: 12px; right: 12px; border-bottom: 2px solid var(--border-color); border-right: 2px solid var(--border-color); }
+
+        /* Componentes com polaridade positiva atenuada (sem branco puro) */
+        .ergo-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+        }
+
+        .ergo-input {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1.5px solid var(--border-color);
+        }
+        .ergo-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .ergo-btn-primary {
+            background-color: var(--accent-color);
+            color: #F4F1EA;
+            cursor: pointer;
+            transition: transform 0.1s ease, opacity 0.15s ease;
+        }
+        .ergo-btn-primary:hover:not(:disabled) {
+            opacity: 0.92;
+        }
+        .ergo-btn-primary:active:not(:disabled) {
+            transform: scale(0.99);
+        }
+        .ergo-btn-primary:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .ergo-btn-secondary {
+            background-color: var(--bg-surface);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        .ergo-btn-secondary:hover:not(:disabled) {
+            background-color: var(--border-color);
+        }
+        .ergo-btn-secondary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Contêiner invisível para medição geométrica exata de paginação sem rolagem */
+        #pagination-measurer {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Scrollbar discreta para a caixa de inserção e modais em telas pequenas */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        /* Animação de equalizador para o Ruído Marrom */
+        @keyframes sound-wave {
+            0%, 100% { height: 4px; }
+            50% { height: 13px; }
+        }
+        .sound-bar-1 { animation: sound-wave 1.1s ease-in-out infinite; }
+        .sound-bar-2 { animation: sound-wave 0.8s ease-in-out infinite 0.2s; }
+        .sound-bar-3 { animation: sound-wave 1.3s ease-in-out infinite 0.4s; }
+    </style>
+</head>
+<body class="surface-warm-grey paper-texture-active">
+
+    <!-- ======================================================================= -->
+    <!-- 1. MODAL INICIAL OBRIGATÓRIO: CALIBRAÇÃO POSTURAL E ALTURA DO MONITOR   -->
+    <!-- ======================================================================= -->
+    <div id="posture-onboarding-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style="background-color: rgba(234, 230, 223, 0.96); backdrop-filter: blur(4px);">
+        <div class="ergo-card max-w-2xl w-full max-h-[92vh] overflow-y-auto rounded-2xl p-6 md:p-8 shadow-lg border-2 my-auto" style="border-color: var(--border-color);">
+            <div class="flex items-center gap-3 mb-3">
+                <span class="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider" style="background-color: var(--accent-soft); color: var(--text-primary);">
+                    Passo 1 • Ergonomia Oftalmológica
+                </span>
+                <span class="text-xs" style="color: var(--text-muted);">Prevenção de Evaporação Lacrimal</span>
+            </div>
+
+            <h1 class="text-xl md:text-2xl font-semibold mb-2.5 tracking-tight" style="color: var(--text-primary);">
+                Ajuste Físico da Altura do Monitor
+            </h1>
+            
+            <p class="text-sm md:text-base leading-relaxed mb-5" style="color: var(--text-secondary);">
+                Antes de iniciar a leitura, ajuste a altura da sua tela ou cadeira. A literatura de optometria demonstra que olhar para o monitor em linha reta ou inclinada para cima amplia a fenda palpebral e acelera a evaporação do filme lacrimal.
+            </p>
+
+            <!-- Ilustração Vetorial Científica do Ângulo de Visão (-15° a -20°) -->
+            <div class="rounded-xl p-4 mb-5 border" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                <svg viewBox="0 0 600 205" class="w-full h-auto max-h-48" aria-label="Diagrama de alinhamento entre os olhos e o topo do monitor">
+                    <line x1="20" y1="50" x2="580" y2="50" stroke="#3D5A45" stroke-width="1.5" stroke-dasharray="6,6" />
+                    <text x="290" y="40" font-size="11" fill="#3D5A45" font-weight="600" text-anchor="middle">LINHA HORIZONTAL DOS OLHOS (0° — TOPO DA TELA)</text>
+
+                    <!-- Cabeça / Olho -->
+                    <circle cx="95" cy="65" r="35" fill="#E4DFD5" stroke="#5A5751" stroke-width="2" />
+                    <circle cx="121" cy="53" r="6.5" fill="#1E1E1E" />
+                    <path d="M 111 49 Q 121 43 131 51" fill="none" stroke="#3D5A45" stroke-width="3" />
+                    <text x="95" y="122" font-size="12" fill="#252525" font-weight="600" text-anchor="middle">Olhos a 50–65 cm</text>
+                    <text x="95" y="138" font-size="11" fill="#5A5751" text-anchor="middle">Pálpebra protege a córnea</text>
+
+                    <!-- Feixe de Visão Rebaixado (-15° a -20°) -->
+                    <polygon points="128,52 465,50 465,130" fill="#C8D3CA" fill-opacity="0.45" />
+                    <line x1="128" y1="52" x2="465" y2="117" stroke="#3D5A45" stroke-width="2.5" />
+                    
+                    <path d="M 220 51 A 90 90 0 0 1 217 70" fill="none" stroke="#1E1E1E" stroke-width="2" />
+                    <text x="275" y="86" font-size="13" fill="#1E1E1E" font-weight="700">Inclinação de -15° a -20°</text>
+                    <text x="275" y="102" font-size="11" fill="#5A5751">Visão levemente rebaixada para o centro</text>
+
+                    <!-- Monitor -->
+                    <rect x="465" y="47" width="14" height="120" rx="3" fill="#252525" />
+                    <rect x="462" y="52" width="4" height="110" fill="#3D5A45" />
+                    <path d="M 479 120 L 505 180 L 455 180" fill="none" stroke="#5A5751" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                    <line x1="440" y1="180" x2="520" y2="180" stroke="#5A5751" stroke-width="4" stroke-linecap="round" />
+
+                    <circle cx="465" cy="117" r="5" fill="#3D5A45" />
+                    <text x="530" y="114" font-size="12" fill="#252525" font-weight="600" text-anchor="middle">Centro do</text>
+                    <text x="530" y="129" font-size="12" fill="#252525" font-weight="600" text-anchor="middle">Texto</text>
+                </svg>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5 text-xs md:text-sm">
+                <div class="p-3.5 rounded-xl border" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                    <strong class="block mb-1" style="color: var(--text-primary);">1. Alinhamento do Topo da Tela</strong>
+                    <span style="color: var(--text-muted);">Posicione a borda superior do monitor exatamente na altura dos seus olhos.</span>
+                </div>
+                <div class="p-3.5 rounded-xl border" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                    <strong class="block mb-1" style="color: var(--text-primary);">2. Proteção do Filme Lacrimal</strong>
+                    <span style="color: var(--text-muted);">Ao olhar 15° a 20° para baixo rumo ao centro da tela, a pálpebra superior recobre parte do globo ocular e reduz o ressecamento.</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button id="btn-confirm-posture" type="button" class="ergo-btn-primary px-6 py-3 rounded-xl font-medium text-sm md:text-base flex items-center gap-2 shadow-sm">
+                    <span>Monitor Ajustado • Prosseguir para o Estudo</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- 2. TELA INICIAL: INSERÇÃO E PREPARAÇÃO DO MATERIAL DE ESTUDO            -->
+    <!-- ======================================================================= -->
+    <main id="editor-view" class="flex-1 flex flex-col items-center justify-center p-4 md:p-6 max-w-4xl mx-auto w-full">
+        
+        <!-- Cabeçalho de Identidade Inicial -->
+        <div class="flex items-center gap-3 mb-6 w-full px-2">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg" style="background-color: var(--accent-color); color: #F4F1EA;">K</div>
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold tracking-tight" style="color: var(--text-primary);">Kognos ErgoReader</h1>
+                <p class="text-xs md:text-sm mt-0.5" style="color: var(--text-muted);">Preparação do Material de Estudo</p>
+            </div>
+        </div>
+
+        <div class="ergo-card w-full rounded-2xl p-5 md:p-7 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+                <div>
+                    <h2 class="text-lg font-semibold tracking-tight" style="color: var(--text-primary);">
+                        Inserção de Texto Focal
+                    </h2>
+                    <p class="text-xs mt-1" style="color: var(--text-muted);">
+                        O texto será segmentado automaticamente em páginas fixas (sem rolagem).
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 shrink-0">
+                    <input id="input-pdf-file" type="file" accept="application/pdf,.pdf" class="hidden" />
+                    <button id="btn-import-pdf" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5" title="Anexar arquivo PDF e converter em texto legível">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        <span id="pdf-import-label">Importar PDF</span>
+                    </button>
+                    <button id="btn-save-text" type="button" class="ergo-btn-primary px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                        <span>Salvar</span>
+                    </button>
+                    <button id="btn-load-sample" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5">
+                        <span>Texto de Exemplo</span>
+                    </button>
+                    <button id="btn-clear-text" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium">
+                        Limpar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Barra de status da conversão de PDF -->
+            <div id="pdf-import-status" class="hidden mb-4 px-3.5 py-2.5 rounded-xl text-xs font-medium border flex items-center justify-between gap-2" style="background-color: var(--bg-primary); border-color: var(--border-color); color: var(--text-primary);"></div>
+
+            <!-- Campo de Título Opcional -->
+            <div class="mb-4">
+                <label for="input-doc-title" class="block text-xs font-semibold uppercase tracking-wider mb-1" style="color: var(--text-muted);">
+                    Título do Estudo / Capítulo
+                </label>
+                <input id="input-doc-title" type="text" placeholder="Ex.: Fisiologia Oculomotora e Consolidação Semântica" 
+                    class="ergo-input w-full px-3.5 py-2 rounded-xl text-sm md:text-base font-medium" />
+            </div>
+
+            <!-- Área de Texto Principal -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-1">
+                    <label for="input-raw-text" class="block text-xs font-semibold uppercase tracking-wider" style="color: var(--text-muted);">
+                        Corpo do Texto (Separe parágrafos com Enter)
+                    </label>
+                    <span id="word-count-badge" class="text-xs font-mono" style="color: var(--text-muted);">0 palavras • 0 parágrafos</span>
+                </div>
+                <textarea id="input-raw-text" rows="9" 
+                    placeholder="Cole aqui o artigo, capítulo de livro ou resumo acadêmico que deseja estudar..."
+                    class="ergo-input w-full p-3.5 rounded-xl text-sm md:text-base leading-relaxed resize-y"></textarea>
+            </div>
+
+            <!-- Configurações de Isolamento de Foco antes de iniciar -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-4 border-t" style="border-color: var(--border-color);">
+                <button id="btn-reopen-posture" type="button" class="underline hover:opacity-80 cursor-pointer text-xs font-medium" style="color: var(--text-muted);">
+                    Rever Guia de Altura do Monitor
+                </button>
+
+                <button id="btn-start-reading" type="button" class="ergo-btn-primary w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-sm md:text-base flex items-center justify-center gap-2 shadow-sm">
+                    <span>Iniciar Leitura Paginada</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Nova Seção: Textos Salvos -->
+        <div class="w-full mt-6">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold tracking-wide uppercase" style="color: var(--text-muted);">
+                    Meus Textos Salvos
+                </h3>
+                <div class="flex items-center gap-2">
+                    <input id="input-import-backup" type="file" accept=".json" class="hidden" />
+                    <button id="btn-import-backup" type="button" class="ergo-btn-secondary px-3 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1.5" title="Importar Backup">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                        <span>Importar</span>
+                    </button>
+                    <button id="btn-export-backup" type="button" class="ergo-btn-secondary px-3 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1.5" title="Exportar Backup">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        <span>Exportar</span>
+                    </button>
+                </div>
+            </div>
+            <div id="saved-texts-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <!-- Cards de textos salvos injetados dinamicamente aqui -->
+            </div>
+        </div>
+    </main>
+
+    <!-- ======================================================================= -->
+    <!-- 3. TELA PRINCIPAL DE LEITURA ESTÁTICA COM SIDEBAR LATERAL               -->
+    <!-- ======================================================================= -->
+    <main id="reader-view" class="hidden flex-1 min-h-0 flex flex-row overflow-hidden select-text relative w-full h-full">
+        
+        <!-- Palco Central com align-items: stretch para garantir 100% da altura em Tela Cheia -->
+        <div class="flex-1 min-h-0 flex items-stretch justify-center px-4 py-4 md:px-8 md:py-6 overflow-hidden relative">
+            
+            <!-- Botões Flutuantes quando a Barra de Opções está Recolhida -->
+            <div id="collapsed-sidebar-controls" class="hidden fixed top-4 right-4 z-40 flex items-center gap-2">
+                <button id="btn-quick-single-page" type="button" class="hidden ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium shadow-md flex items-center gap-1.5" title="Voltar para visualização de 1 página">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <span>1 Página</span>
+                </button>
+                <button id="btn-expand-sidebar" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium shadow-md flex items-center gap-1.5" title="Expandir barra de opções">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    <span>Opções</span>
+                </button>
+            </div>
+
+            <!-- Moldura Topográfica Fixa da Página -->
+            <div id="static-page-frame" class="ergo-card relative w-full max-w-4xl flex-1 min-h-0 rounded-2xl px-5 py-5 md:px-12 md:py-7 flex flex-col justify-between overflow-hidden shadow-sm transition-all duration-200">
+                <!-- 4 Âncoras Espaciais Topográficas nos Cantos -->
+                <div class="spatial-anchor anchor-tl"></div>
+                <div class="spatial-anchor anchor-tr"></div>
+                <div class="spatial-anchor anchor-bl"></div>
+                <div class="spatial-anchor anchor-br"></div>
+
+                <!-- Cabeçalho Topográfico da Página Fixa -->
+                <div class="flex items-center justify-between border-b pb-2 mb-3 shrink-0 text-xs" style="border-color: var(--border-color); color: var(--text-muted);">
+                    <span id="page-header-title" class="font-medium truncate max-w-xs md:max-w-md">Estudo Focal</span>
+                    <div class="flex items-center gap-3 font-mono">
+                        <span id="page-spatial-quadrant" class="hidden sm:inline" title="Posição espacial da página para ancoragem de memória">PÁGINA ÍMPAR • DIREITA</span>
+                        <span id="page-number-top" class="font-semibold" style="color: var(--text-primary);">Pág. 1 / 1</span>
+                    </div>
+                </div>
+
+                <!-- Caixa de Visualização Estática (Medida dinamicamente para caber sem rolagem) -->
+                <div id="page-Viewport-box" class="flex-1 min-h-0 w-full flex flex-col justify-start items-center overflow-hidden my-1">
+                    <article id="static-page-content" class="ergo-reading-column">
+                        <!-- Parágrafos da página atual (ou página esquerda) renderizados aqui -->
+                    </article>
+                    <div id="book-spine-divider" class="book-spine-divider hidden" aria-hidden="true"></div>
+                    <article id="static-page-content-right" class="ergo-reading-column hidden">
+                        <!-- Parágrafos da página direita no modo Página Dupla -->
+                    </article>
+                </div>
+
+                <!-- Rodapé Interno da Página com Indicador de Bloco Lógico -->
+                <div class="flex flex-wrap items-center justify-between gap-2 border-t pt-2 mt-3 shrink-0 text-xs" style="border-color: var(--border-color); color: var(--text-muted);">
+                    <div class="flex items-center gap-2">
+                        <span>Parágrafo em Foco:</span>
+                        <strong id="focused-block-indicator" class="font-mono" style="color: var(--text-primary);">1 de 1</strong>
+                    </div>
+                    <span class="hidden md:inline font-mono text-[10px] uppercase tracking-wide">Utilize a Sidebar ou o teclado (Setas/Espaço) para navegar</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Painel Lateral de Controles (Sidebar) -->
+        <aside id="reader-sidebar" class="fixed inset-y-0 right-0 z-50 md:relative w-72 md:w-64 lg:w-72 border-l shrink-0 flex flex-col p-5 overflow-y-auto gap-6 shadow-2xl md:shadow-none" style="background-color: var(--bg-secondary); border-color: var(--border-color);">
+            
+            <!-- Cabeçalho da Sidebar -->
+            <div class="flex items-center justify-between pb-4 border-b" style="border-color: var(--border-color);">
+                <div class="font-bold text-sm tracking-tight flex items-center gap-2" style="color: var(--text-primary);">
+                   <div class="w-6 h-6 rounded flex items-center justify-center text-xs" style="background-color: var(--accent-color); color: #F4F1EA;">K</div>
+                   Kognos
+                </div>
+                <div class="flex items-center gap-2.5">
+                    <button id="btn-back-to-editor" class="text-xs font-medium underline cursor-pointer hover:opacity-80" style="color: var(--text-muted);">
+                        Sair da Leitura
+                    </button>
+                    <button id="btn-collapse-sidebar" type="button" class="ergo-btn-secondary p-1.5 rounded-lg" title="Recolher barra de opções">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Foco e Timer -->
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Timer de descanso ocular</span>
+                    <button id="btn-reset-202020" type="button" class="text-[10px] font-medium underline cursor-pointer hover:opacity-80" style="color: var(--text-muted);" title="Reiniciar contagem para 20 minutos">Reiniciar</button>
+                </div>
+                <div class="flex items-center justify-between border rounded-xl px-3 py-2.5 shadow-sm" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full transition-opacity" id="timer-indicator-dot" style="background-color: var(--accent-color); opacity: 1;"></span>
+                        <strong id="timer-display" class="font-mono text-sm" style="color: var(--text-primary);">20:00</strong>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-toggle-202020" type="button" class="ergo-btn-primary px-2.5 py-1 rounded-lg text-[11px] font-medium">Pausar</button>
+                        <button id="btn-test-202020" type="button" class="text-[11px] font-medium underline cursor-pointer hover:opacity-80" style="color: var(--accent-color);">Testar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navegação -->
+            <div class="flex flex-col gap-2">
+                <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Navegação</span>
+                
+                <div class="grid grid-cols-2 gap-2 mb-1">
+                    <button id="btn-prev-block" class="ergo-btn-secondary py-2.5 rounded-xl text-xs flex flex-col items-center justify-center gap-1.5 shadow-sm" title="Seta para Cima">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                        <span>Bloco Ant.</span>
+                    </button>
+                    <button id="btn-next-block" class="ergo-btn-primary py-2.5 rounded-xl text-xs flex flex-col items-center justify-center gap-1.5 shadow-sm" title="Barra de Espaço ou Seta para Baixo">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        <span>Avançar</span>
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-prev-page" class="ergo-btn-secondary py-2 rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        <span>Pág Ant.</span>
+                    </button>
+                    <button id="btn-next-page" class="ergo-btn-secondary py-2 rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-sm">
+                        <span>Próx Pág</span>
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Comentários -->
+            <div class="flex flex-col gap-2 pt-4 border-t" style="border-color: var(--border-color);">
+                <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Comentários</span>
+                <button id="btn-view-all-comments" type="button" class="ergo-btn-secondary py-2 rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm" title="Ver lista com todas as suas anotações">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h6m-6 8l-4-4V6a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H7z"/></svg>
+                    <span>Ver todos os comentários</span>
+                </button>
+                <button id="btn-view-active-recalls" type="button" class="ergo-btn-secondary py-2 rounded-xl text-[11px] flex items-center justify-center gap-1.5 shadow-sm mt-1" title="Ver lista com todas as suas recuperações ativas">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span>Ver recuperações ativas</span>
+                </button>
+            </div>
+
+            <!-- Ergonomia Visual -->
+            <div class="flex flex-col gap-3 pt-4 border-t mt-auto" style="border-color: var(--border-color);">
+                <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Ajustes Visuais</span>
+                
+                <!-- Seletor de Modo de Página (1 Página vs Página Dupla) -->
+                <div class="flex items-center gap-1 p-1 rounded-lg border text-xs shadow-sm" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                    <button id="btn-layout-single" type="button" class="flex-1 py-1.5 rounded font-medium flex justify-center items-center gap-1 cursor-pointer transition-colors" style="color: var(--text-muted);">
+                        <span>1 Página</span>
+                    </button>
+                    <button id="btn-layout-double" type="button" class="flex-1 py-1.5 rounded font-medium flex justify-center items-center gap-1 cursor-pointer transition-colors" style="background-color: var(--accent-soft); color: var(--text-primary);" title="Exibe duas páginas lado a lado e recolhe a barra de opções">
+                        <span>Página Dupla</span>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-1 p-1 rounded-lg border text-xs shadow-sm" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                    <button id="btn-surface-cream" type="button" class="flex-1 py-1.5 rounded font-medium flex justify-center items-center gap-1.5 cursor-pointer transition-colors" style="color: var(--text-muted);">
+                        <span class="w-3 h-3 rounded-full border border-stone-500" style="background-color: #F4F1EA;"></span> Creme
+                    </button>
+                    <button id="btn-surface-grey" type="button" class="flex-1 py-1.5 rounded font-medium flex justify-center items-center gap-1.5 cursor-pointer transition-colors" style="background-color: var(--accent-soft); color: var(--text-primary);">
+                        <span class="w-3 h-3 rounded-full border border-stone-500" style="background-color: #EAE6DF;"></span> Cinza
+                    </button>
+                </div>
+
+                <select id="select-font" class="ergo-input px-2.5 py-2 rounded-xl text-xs font-medium w-full cursor-pointer shadow-sm">
+                    <option value="'Lexend', sans-serif">Fonte: Lexend</option>
+                    <option value="'Atkinson Hyperlegible', sans-serif" selected>Fonte: Atkinson</option>
+                    <option value="Verdana, sans-serif">Fonte: Verdana</option>
+                </select>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="select-size" class="ergo-input px-2 py-2 rounded-xl text-xs font-medium cursor-pointer shadow-sm">
+                        <option value="16px">16px</option>
+                        <option value="18px" selected>18px</option>
+                        <option value="20px">20px</option>
+                    </select>
+                    <select id="select-measure" class="ergo-input px-2 py-2 rounded-xl text-[11px] font-medium cursor-pointer shadow-sm">
+                        <option value="54ch" selected>54 carac.</option>
+                        <option value="62ch">62 carac.</option>
+                        <option value="70ch">70 carac.</option>
+                    </select>
+                </div>
+                
+                <select id="select-beeline" class="ergo-input px-2.5 py-2 rounded-xl text-[11px] font-medium w-full cursor-pointer shadow-sm mt-1">
+                    <option value="off">Guia de Cor (BeeLine): Desligado</option>
+                    <option value="50" selected>Guia de Cor: 50% Suave</option>
+                    <option value="100">Guia de Cor: 100% Intenso</option>
+                </select>
+                
+                <label class="inline-flex items-center gap-2 mt-1 cursor-pointer select-none text-[11px] w-full" style="color: var(--text-secondary);">
+                    <input type="checkbox" id="toggle-full-page-opacity" class="rounded accent-stone-700 w-3.5 h-3.5 cursor-pointer" />
+                    <span>Iluminar página inteira (100%)</span>
+                </label>
+                <div class="flex flex-col gap-1.5 mt-1 w-full">
+                    <div class="flex items-center justify-between text-[11px]" style="color: var(--text-secondary);">
+                        <label for="range-paper-texture" class="cursor-pointer select-none">Textura de papel</label>
+                        <span id="paper-texture-value" class="font-mono text-[10px]" style="color: var(--text-muted);">50%</span>
+                    </div>
+                    <input type="range" id="range-paper-texture" min="0" max="100" step="50" value="50" class="w-full h-1.5 rounded-lg cursor-pointer accent-stone-700" />
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- ======================================================================= -->
+    <!-- 4. BLOQUEIO DE TELA CHEIA: DESCANSE OS OLHOS          -->
+    <!-- ======================================================================= -->
+    <div id="modal-202020" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style="background-color: rgba(228, 223, 213, 0.98); backdrop-filter: blur(8px);">
+        <div class="ergo-card max-w-xl w-full rounded-2xl p-6 md:p-8 text-center shadow-xl border-2 my-auto" style="border-color: var(--accent-color);">
+            <div class="w-14 h-14 rounded-full mx-auto mb-4 flex items-center justify-center" style="background-color: var(--accent-soft); color: var(--accent-color);">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+            </div>
+
+            <span class="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider inline-block mb-2" style="background-color: var(--accent-soft); color: var(--text-primary);">
+                Pausa Obrigatória • Timer de descanso ocular
+            </span>
+
+            <h2 class="text-xl md:text-2xl font-bold mb-2.5" style="color: var(--text-primary);">
+                Desvie o Olhar para Longe (6 Metros)
+            </h2>
+
+            <p class="text-sm md:text-base leading-relaxed mb-5" style="color: var(--text-secondary);">
+                Você completou 20 minutos contínuos de leitura. Olhe agora para um objeto distante (a cerca de <strong>6 metros / 20 pés</strong>) e pisque lentamente para relaxar o músculo ciliar.
+            </p>
+
+            <!-- Contador Regressivo Obrigatório de 20 Segundos -->
+            <div class="rounded-2xl p-5 mb-5 border" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                <div class="text-xs uppercase tracking-wider font-semibold mb-1" style="color: var(--text-muted);">
+                    Tempo Restante para Desbloqueio
+                </div>
+                <div id="break-countdown-number" class="text-4xl md:text-5xl font-mono font-bold my-2" style="color: var(--accent-color);">
+                    20s
+                </div>
+                <div class="w-full h-2.5 rounded-full overflow-hidden mt-3" style="background-color: var(--bg-surface);">
+                    <div id="break-progress-bar" class="h-full transition-all duration-1000 ease-linear" style="width: 100%; background-color: var(--accent-color);"></div>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button id="btn-unlock-reading" type="button" disabled class="ergo-btn-primary flex-1 py-3 rounded-xl font-semibold text-sm md:text-base">
+                    Aguarde o relaxamento ocular (20s)...
+                </button>
+                <button id="btn-do-active-recall" type="button" class="hidden ergo-btn-secondary flex-1 py-3 rounded-xl font-semibold text-sm md:text-base border-2" style="border-color: var(--accent-color); color: var(--accent-color);">
+                    Fazer Recuperação Ativa
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra flutuante para destacar trechos selecionados durante a leitura -->
+    <div id="highlight-toolbar" class="hidden fixed z-50 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl shadow-lg border" style="background-color: var(--bg-secondary); border-color: var(--border-color);">
+        <button type="button" data-hl-action="yellow" title="Destacar em Amarelo" class="w-6 h-6 rounded-full border border-stone-400 cursor-pointer transition-transform hover:scale-110" style="background-color: #F5C518;"></button>
+        <button type="button" data-hl-action="green" title="Destacar em Verde" class="w-6 h-6 rounded-full border border-stone-400 cursor-pointer transition-transform hover:scale-110" style="background-color: #6BA37D;"></button>
+        <button type="button" data-hl-action="coral" title="Destacar em Coral" class="w-6 h-6 rounded-full border border-stone-400 cursor-pointer transition-transform hover:scale-110" style="background-color: #E07A82;"></button>
+        <div class="w-px h-4 mx-0.5" style="background-color: var(--border-color);"></div>
+        <button id="btn-remove-highlight" type="button" title="Remover destaque" class="px-2 py-1 rounded-lg text-[11px] font-medium cursor-pointer hover:opacity-80" style="background-color: var(--bg-surface); color: var(--text-primary);">
+            Remover
+        </button>
+        <div class="w-px h-4 mx-0.5" style="background-color: var(--border-color);"></div>
+        <button id="btn-toolbar-comment" type="button" title="Comentar este parágrafo" class="px-2 py-1 rounded-lg text-[11px] font-medium cursor-pointer hover:opacity-80" style="background-color: var(--accent-soft); color: var(--text-primary);">
+            Comentar
+        </button>
+    </div>
+
+    <!-- Aviso discreto de salvamento automático das marcações -->
+    <div id="highlight-toast" class="hidden fixed bottom-4 left-4 z-50 px-3.5 py-2 rounded-xl text-xs font-medium shadow-md border transition-opacity duration-200" style="background-color: var(--accent-color); color: #F4F1EA; border-color: var(--border-color);">
+        Texto salvo automaticamente com suas marcações
+    </div>
+
+    <!-- Caixa flutuante expansível para leitura/edição rápida do comentário -->
+    <div id="comment-floating-popover" class="hidden ergo-comment-popover"></div>
+
+    <!-- Modal de Comentários -->
+    <div id="modal-all-comments" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 overflow-y-auto" style="background-color: rgba(228, 223, 213, 0.96); backdrop-filter: blur(4px);">
+        <div class="ergo-card max-w-2xl w-full max-h-[85vh] flex flex-col rounded-2xl p-0 shadow-xl border-2 my-auto" style="border-color: var(--border-color);">
+            <div class="p-5 border-b flex justify-between items-center" style="border-color: var(--border-color);">
+                <h3 class="font-bold text-lg" style="color: var(--text-primary);">Meus Comentários</h3>
+                <button id="btn-close-all-comments" type="button" class="p-2 rounded-lg cursor-pointer transition-colors hover:opacity-75" style="color: var(--text-muted);">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="all-comments-list" class="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+                <!-- Lista injetada aqui -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Banner flutuante para retorno da página do comentário -->
+    <div id="return-banner" class="hidden fixed top-6 left-1/2 -translate-x-1/2 z-[55] flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-2xl border transition-all" style="background-color: var(--bg-primary); border-color: var(--accent-color);">
+        <span class="text-xs font-medium" style="color: var(--text-primary);">Visualizando um comentário isolado.</span>
+        <button id="btn-return-original-page" type="button" class="ergo-btn-primary px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">
+            Voltar para onde estava
+        </button>
+    </div>
+
+    <!-- Modal de Escrita da Recuperação Ativa (Fundo Borrado) -->
+    <div id="modal-active-recall-writer" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-4" style="background-color: rgba(228, 223, 213, 0.98); backdrop-filter: blur(12px);">
+        <div class="ergo-card max-w-3xl w-full flex flex-col rounded-2xl p-6 md:p-8 shadow-2xl border-2 my-auto" style="border-color: var(--accent-color);">
+            <div class="mb-4">
+                <span class="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider inline-block mb-2" style="background-color: var(--accent-soft); color: var(--text-primary);">
+                    Prática de Recuperação Ativa
+                </span>
+                <h3 class="font-bold text-xl md:text-2xl" style="color: var(--text-primary);">O que você lembra do que acabou de ler?</h3>
+                <p class="text-sm mt-2" style="color: var(--text-secondary);">Escreva de cabeça os conceitos principais. O texto original está oculto para forçar o resgate na memória.</p>
+            </div>
+            <textarea id="textarea-active-recall" rows="8" placeholder="Digite aqui tudo o que você lembra..." class="ergo-input w-full p-4 rounded-xl text-sm md:text-base resize-y mb-4 shadow-inner focus:ring-2" style="border-color: var(--border-color);"></textarea>
+            <div class="flex items-center justify-end gap-3 pt-2">
+                <button id="btn-cancel-active-recall" type="button" class="ergo-btn-secondary px-4 py-2.5 rounded-xl text-sm font-medium">Cancelar</button>
+                <button id="btn-save-active-recall" type="button" class="ergo-btn-primary px-6 py-2.5 rounded-xl text-sm font-bold shadow-md">Salvar Anotação e Retomar Leitura</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Lista de Recuperações Ativas -->
+    <div id="modal-active-recall-list" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4 overflow-y-auto" style="background-color: rgba(228, 223, 213, 0.96); backdrop-filter: blur(4px);">
+        <div class="ergo-card max-w-2xl w-full max-h-[85vh] flex flex-col rounded-2xl p-0 shadow-xl border-2 my-auto" style="border-color: var(--border-color);">
+            <div class="p-5 border-b flex justify-between items-center" style="border-color: var(--border-color);">
+                <h3 class="font-bold text-lg" style="color: var(--text-primary);">Minhas Recuperações Ativas</h3>
+                <button id="btn-close-active-recall-list" type="button" class="p-2 rounded-lg cursor-pointer transition-colors hover:opacity-75" style="color: var(--text-muted);">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="active-recall-items-container" class="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+                <!-- Lista injetada aqui -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Contêiner oculto para cálculo geométrico exato das páginas estáticas -->
+    <div id="pagination-measurer" class="ergo-reading-column"></div>
+
+    <!-- ======================================================================= -->
+    <!-- LÓGICA DO APLICATIVO (PAGINAÇÃO ESTÁTICA, FOCO E ALARME DE DESCANSO OCULAR        -->
+    <!-- ======================================================================= -->
+    <script>
+        const SAMPLE_STUDY_TITLE = "Fisiologia Oculomotora, Polaridade Óptica e Memória Espacial";
+        const SAMPLE_STUDY_TEXT = `A leitura proficiente não consiste em um deslizamento contínuo e suave dos olhos sobre as linhas, mas em uma sequência altamente coordenada de saltos balísticos denominados sacadas, intercalados por breves períodos de imobilidade chamados fixações. Durante cada fixação, que dura em média de 200 a 250 milissegundos, o sistema visual extrai informações de alta resolução através da fóvea, que abrange apenas dois graus do campo visual central.
+
+Enquanto a fóvea decodifica a palavra em foco, a região parafoveal atua como um radar antecipatório, estendendo-se de 15 a 20 caracteres à direita no sentido da leitura ocidental. Esse pré-processamento parafoveal identifica o comprimento dos vocábulos seguintes e a geometria das letras iniciais, permitindo ao córtex oculomotor programar com precisão o ponto de aterrissagem da próxima sacada.
+
+Quando a largura da linha em um monitor ultrapassa o limite ergonômico de 75 caracteres, o movimento diagonal de retorno de varredura até o início da próxima linha torna-se excessivamente longo. Isso multiplica os erros de aterrissagem ocular, exigindo micro-sacadas corretivas que elevam a fadiga muscular e quebram a fluidez do processamento sintático.
+
+Além da geometria da mancha gráfica, a polaridade de contraste exerce papel determinante na acuidade retiniana. O uso de texto escuro sobre fundo claro suave — conhecido como polaridade positiva atenuada — estimula uma leve constrição pupilar (miose). Uma pupila menor amplia a profundidade de foco do olho humano, reduzindo aberrações esféricas e evitando o fenômeno de halassão comum no modo escuro, especialmente em leitores com astigmatismo.
+
+No âmbito da neurociência cognitiva, o principal obstáculo das telas modernas para a retenção profunda é a destruição das âncoras topográficas provocada pela rolagem contínua. O hipocampo humano indexa conceitos abstratos associando-os à sua posição física e espacial na página — como lembrar que um argumento crucial estava no topo esquerdo de uma página par.
+
+Ao substituir a rolagem contínua pela paginação estática combinada ao isolamento luminoso por bloco lógico, o leitor preserva a estabilidade espacial da página inteira enquanto reduz a aglomeração visual periférica. Dessa forma, os recursos executivos deixam de ser desperdiçados na localização mecânica das linhas e passam a ser integralmente dedicados à codificação semântica e à consolidação na memória de longo prazo.`;
+
+        const state = {
+            mode: 'editor',
+            title: SAMPLE_STUDY_TITLE,
+            rawText: SAMPLE_STUDY_TEXT,
+            pages: [],
+            currentPageIndex: 0,
+            focusedBlockIndex: 0,
+            fullPageIlluminated: false,
+            doublePage: true,
+            sidebarCollapsed: false,
+            beeline: '50',
+            currentSavedTextId: null,
+            highlights: {}, // { [globalBlockIndex]: [{ start, end, color }] }
+            comments: {}, // { [globalBlockIndex]: "texto do comentário" }
+            activeRecalls: [], // Recuperações ativas salvas
+            expandedCommentGlobalIndex: null,
+            editingCommentGlobalIndex: null,
+            pendingSelection: null, // [{ globalIndex, start, end }]
+            activeMarkTarget: null, // { globalIndex, start, end }
+            toastTimeout: null,
+            lastViewportWidth: 0,
+            lastViewportHeight: 0,
+            returnToPageInfo: null,
+            
+            isOcularTimerEnabled: true,
+            readingSecondsRemaining: 20 * 60,
+            readingTimerInterval: null,
+            isBreakActive: false,
+            breakSecondsRemaining: 20,
+            breakTimerInterval: null
+        };
+
+        let els = {};
+
+        function bindElements() {
+            els = {
+                postureModal: document.getElementById('posture-onboarding-modal'),
+                btnConfirmPosture: document.getElementById('btn-confirm-posture'),
+                btnReopenPosture: document.getElementById('btn-reopen-posture'),
+
+                btnLayoutSingle: document.getElementById('btn-layout-single'),
+                btnLayoutDouble: document.getElementById('btn-layout-double'),
+                btnCollapseSidebar: document.getElementById('btn-collapse-sidebar'),
+                btnExpandSidebar: document.getElementById('btn-expand-sidebar'),
+                btnQuickSinglePage: document.getElementById('btn-quick-single-page'),
+                collapsedSidebarControls: document.getElementById('collapsed-sidebar-controls'),
+                readerSidebar: document.getElementById('reader-sidebar'),
+                staticPageFrame: document.getElementById('static-page-frame'),
+                bookSpineDivider: document.getElementById('book-spine-divider'),
+
+                btnSurfaceCream: document.getElementById('btn-surface-cream'),
+                btnSurfaceGrey: document.getElementById('btn-surface-grey'),
+                selectFont: document.getElementById('select-font'),
+                selectSize: document.getElementById('select-size'),
+                selectMeasure: document.getElementById('select-measure'),
+                selectBeeline: document.getElementById('select-beeline'),
+                rangePaperTexture: document.getElementById('range-paper-texture'),
+                paperTextureValue: document.getElementById('paper-texture-value'),
+
+                timerDisplay: document.getElementById('timer-display'),
+                timerIndicatorDot: document.getElementById('timer-indicator-dot'),
+                btnToggle202020: document.getElementById('btn-toggle-202020'),
+                btnReset202020: document.getElementById('btn-reset-202020'),
+                btnTest202020: document.getElementById('btn-test-202020'),
+                btnBackToEditor: document.getElementById('btn-back-to-editor'),
+
+                editorView: document.getElementById('editor-view'),
+                readerView: document.getElementById('reader-view'),
+
+                inputPdfFile: document.getElementById('input-pdf-file'),
+                btnImportPdf: document.getElementById('btn-import-pdf'),
+                pdfImportLabel: document.getElementById('pdf-import-label'),
+                pdfImportStatus: document.getElementById('pdf-import-status'),
+
+                inputDocTitle: document.getElementById('input-doc-title'),
+                inputRawText: document.getElementById('input-raw-text'),
+                wordCountBadge: document.getElementById('word-count-badge'),
+                btnSaveText: document.getElementById('btn-save-text'),
+                btnLoadSample: document.getElementById('btn-load-sample'),
+                btnClearText: document.getElementById('btn-clear-text'),
+                btnStartReading: document.getElementById('btn-start-reading'),
+                savedTextsContainer: document.getElementById('saved-texts-container'),
+
+                inputImportBackup: document.getElementById('input-import-backup'),
+                btnImportBackup: document.getElementById('btn-import-backup'),
+                btnExportBackup: document.getElementById('btn-export-backup'),
+
+                pageHeaderTitle: document.getElementById('page-header-title'),
+                pageSpatialQuadrant: document.getElementById('page-spatial-quadrant'),
+                pageNumberTop: document.getElementById('page-number-top'),
+                pageViewportBox: document.getElementById('page-Viewport-box'),
+                staticPageContent: document.getElementById('static-page-content'),
+                staticPageContentRight: document.getElementById('static-page-content-right'),
+                focusedBlockIndicator: document.getElementById('focused-block-indicator'),
+                toggleFullPageOpacity: document.getElementById('toggle-full-page-opacity'),
+
+                btnPrevPage: document.getElementById('btn-prev-page'),
+                btnNextPage: document.getElementById('btn-next-page'),
+                btnPrevBlock: document.getElementById('btn-prev-block'),
+                btnNextBlock: document.getElementById('btn-next-block'),
+
+                modal202020: document.getElementById('modal-202020'),
+                breakCountdownNumber: document.getElementById('break-countdown-number'),
+                breakProgressBar: document.getElementById('break-progress-bar'),
+                btnUnlockReading: document.getElementById('btn-unlock-reading'),
+
+                highlightToolbar: document.getElementById('highlight-toolbar'),
+                btnRemoveHighlight: document.getElementById('btn-remove-highlight'),
+                btnToolbarComment: document.getElementById('btn-toolbar-comment'),
+                highlightToast: document.getElementById('highlight-toast'),
+                commentFloatingPopover: document.getElementById('comment-floating-popover'),
+
+                btnViewAllComments: document.getElementById('btn-view-all-comments'),
+                btnViewActiveRecalls: document.getElementById('btn-view-active-recalls'),
+                modalAllComments: document.getElementById('modal-all-comments'),
+                btnCloseAllComments: document.getElementById('btn-close-all-comments'),
+                returnBanner: document.getElementById('return-banner'),
+                btnReturnOriginalPage: document.getElementById('btn-return-original-page'),
+
+                btnDoActiveRecall: document.getElementById('btn-do-active-recall'),
+                modalActiveRecallWriter: document.getElementById('modal-active-recall-writer'),
+                textareaActiveRecall: document.getElementById('textarea-active-recall'),
+                btnCancelActiveRecall: document.getElementById('btn-cancel-active-recall'),
+                btnSaveActiveRecall: document.getElementById('btn-save-active-recall'),
+                modalActiveRecallList: document.getElementById('modal-active-recall-list'),
+                btnCloseActiveRecallList: document.getElementById('btn-close-active-recall-list'),
+                activeRecallItemsContainer: document.getElementById('active-recall-items-container'),
+
+                measurer: document.getElementById('pagination-measurer')
+            };
+        }
+
+        function playErgonomicChime(type = 'start') {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = 'sine';
+                if (type === 'start') {
+                    osc.frequency.setValueAtTime(528, now);
+                    osc.frequency.exponentialRampToValueAtTime(396, now + 0.6);
+                } else {
+                    osc.frequency.setValueAtTime(396, now);
+                    osc.frequency.exponentialRampToValueAtTime(528, now + 0.65);
+                }
+
+                gain.gain.setValueAtTime(0.001, now);
+                gain.gain.exponentialRampToValueAtTime(0.14, now + 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.8);
+            } catch (e) {}
+        }
+
+        function showToast(message) {
+            if (!els.highlightToast) return;
+            els.highlightToast.textContent = message;
+            els.highlightToast.classList.remove('hidden');
+            clearTimeout(state.toastTimeout);
+            state.toastTimeout = setTimeout(() => {
+                els.highlightToast.classList.add('hidden');
+            }, 2400);
+        }
+
+        function isEffectiveDoublePage() {
+            return state.doublePage && window.innerWidth > 860;
+        }
+
+        function applyBeeLineToElement(element, measureStr, intensity) {
+            if (intensity === 'off') return;
+
+            const maxChars = parseInt(measureStr, 10) || 54;
+            const charsPerLine = Math.max(36, maxChars - 5);
+            let charCount = 0;
+
+            const isWarmGrey = document.body.classList.contains('surface-warm-grey');
+            const C_TEXT = isWarmGrey ? [37, 37, 37] : [30, 30, 30];
+            const C_RED = intensity === '100' ? [200, 30, 30] : [140, 60, 60];
+            const C_BLUE = intensity === '100' ? [30, 70, 200] : [60, 80, 140];
+
+            const lerp = (c1, c2, t) => c1.map((v, j) => Math.round(v + (c2[j] - v) * Math.max(0, Math.min(1, t))));
+
+            function walkAndWrap(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    if (!node.nodeValue.trim()) return;
+
+                    const words = node.nodeValue.split(/(\s+)/);
+                    const fragment = document.createDocumentFragment();
+
+                    for (let i = 0; i < words.length; i++) {
+                        const word = words[i];
+                        if (word.match(/^\s+$/)) {
+                            fragment.appendChild(document.createTextNode(word));
+                            charCount += word.length;
+                            continue;
+                        }
+
+                        const lineIndex = Math.floor(charCount / charsPerLine);
+                        const progress = (charCount % charsPerLine) / charsPerLine;
+
+                        let color = C_TEXT;
+                        const isEvenLine = (lineIndex % 2 === 0);
+
+                        if (isEvenLine) {
+                            if (progress < 0.5) color = lerp(C_RED, C_TEXT, progress * 2);
+                            else color = lerp(C_TEXT, C_BLUE, (progress - 0.5) * 2);
+                        } else {
+                            if (progress < 0.5) color = lerp(C_BLUE, C_TEXT, progress * 2);
+                            else color = lerp(C_TEXT, C_RED, (progress - 0.5) * 2);
+                        }
+
+                        const span = document.createElement('span');
+                        span.style.color = `rgb(${color[0]},${color[1]},${color[2]})`;
+                        span.textContent = word;
+                        fragment.appendChild(span);
+                        charCount += word.length;
+                    }
+                    node.parentNode.replaceChild(fragment, node);
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.classList.contains('ergo-comment-anchor')) return;
+                    const children = Array.from(node.childNodes);
+                    children.forEach(walkAndWrap);
+                }
+            }
+
+            const children = Array.from(element.childNodes);
+            children.forEach(walkAndWrap);
+        }
+
+        function chunkDenseText(rawText, minWords = 45, maxWords = 75, targetSentences = 4) {
+            if (!rawText || typeof rawText !== 'string') return [];
+
+            const sourceBlocks = rawText.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+            const optimizedBlocks = [];
+
+            for (const block of sourceBlocks) {
+                const wordCount = block.split(/\s+/).length;
+                if (wordCount <= maxWords) {
+                    optimizedBlocks.push(block);
+                    continue;
+                }
+
+                const protectedText = block
+                    .replace(/(\d+)[,.](\d+)/g, '$1__DEC__$2')
+                    .replace(/\b(dr|dra|ex|pág|art|tab|fig|vol)\./gi, '$1__ABBR__')
+                    .replace(/([A-Z0-9]+)\/([A-Z0-9]+)/g, '$1__SLASH__$2');
+
+                const rawSentences = protectedText
+                    .split(/(?<=[.?!;])\s+(?=[A-ZÀ-Ú0-9"'])/g)
+                    .map(s => s
+                        .replace(/__DEC__/g, ',')
+                        .replace(/__ABBR__/g, '.')
+                        .replace(/__SLASH__/g, '/')
+                        .trim()
+                    )
+                    .filter(Boolean);
+
+                let currentChunk = [];
+                let currentWords = 0;
+
+                for (const sentence of rawSentences) {
+                    const count = sentence.split(/\s+/).length;
+                    const willOverflow = (currentWords + count > maxWords && currentChunk.length >= 2);
+                    const reachedCap = (currentChunk.length >= targetSentences || currentWords >= minWords);
+
+                    if (willOverflow || (reachedCap && (currentWords + count > minWords))) {
+                        if (currentChunk.length > 0) {
+                            optimizedBlocks.push(currentChunk.join(' '));
+                            currentChunk = [];
+                            currentWords = 0;
+                        }
+                    }
+
+                    currentChunk.push(sentence);
+                    currentWords += count;
+                }
+
+                if (currentChunk.length > 0) {
+                    optimizedBlocks.push(currentChunk.join(' '));
+                }
+            }
+
+            return optimizedBlocks;
+        }
+
+        function extractLogicalParagraphs(rawText) {
+            const structuredChunks = chunkDenseText(rawText);
+
+            if (typeof marked === 'undefined') {
+                return structuredChunks.map(c => `<p>${c}</p>`);
+            }
+
+            return structuredChunks.map(chunk => {
+                const tokens = marked.lexer(chunk);
+                return marked.parser(tokens).trim();
+            }).filter(Boolean);
+        }
+
+        function updateEditorStats() {
+            const raw = els.inputRawText.value.trim();
+            if (!raw) {
+                els.wordCountBadge.textContent = "0 palavras • 0 blocos";
+                return;
+            }
+            const words = raw.split(/\s+/).filter(Boolean).length;
+            const paragraphs = extractLogicalParagraphs(raw).length;
+            els.wordCountBadge.textContent = `${words} palavras • ${paragraphs} blocos`;
+        }
+
+        // =====================================================================
+        // IMPORTAÇÃO E RECONSTRUÇÃO DE PARÁGRAFOS DE ARQUIVOS PDF
+        // =====================================================================
+        async function handlePdfUpload(file) {
+            if (!file) return;
+            if (typeof pdfjsLib === 'undefined') {
+                els.pdfImportStatus.textContent = "Biblioteca PDF.js indisponível. Verifique sua conexão e tente novamente.";
+                els.pdfImportStatus.classList.remove('hidden');
+                return;
+            }
+
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            els.pdfImportLabel.textContent = "Processando...";
+            els.btnImportPdf.disabled = true;
+            els.pdfImportStatus.classList.remove('hidden');
+            els.pdfImportStatus.textContent = `Lendo "${file.name}"...`;
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const totalPages = pdf.numPages;
+                const extractedPages = [];
+
+                for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                    els.pdfImportStatus.textContent = `Extraindo página ${pageNum} de ${totalPages}...`;
+                    const page = await pdf.getPage(pageNum);
+                    const textContent = await page.getTextContent();
+
+                    const lines = [];
+                    let currentLine = [];
+                    let lastY = null;
+
+                    for (const item of textContent.items) {
+                        const str = item.str;
+                        if (!str || !str.trim()) continue;
+                        const y = item.transform ? item.transform[5] : 0;
+
+                        if (lastY !== null && Math.abs(y - lastY) > 6) {
+                            lines.push({ text: currentLine.join(' ').trim(), y: lastY });
+                            currentLine = [str.trim()];
+                        } else {
+                            currentLine.push(str.trim());
+                        }
+                        lastY = y;
+                    }
+                    if (currentLine.length > 0) {
+                        lines.push({ text: currentLine.join(' ').trim(), y: lastY });
+                    }
+
+                    let pageParagraphs = [];
+                    let currentPara = "";
+                    for (let i = 0; i < lines.length; i++) {
+                        const lineText = lines[i].text;
+                        const prevY = i > 0 ? lines[i - 1].y : null;
+                        const gapY = prevY !== null ? Math.abs(prevY - lines[i].y) : 0;
+
+                        if (!currentPara) {
+                            currentPara = lineText;
+                        } else if (gapY > 18 || /[.!?:;]$/.test(currentPara) && /^[A-ZÀ-Ú0-9•\-]/.test(lineText) && gapY > 12) {
+                            pageParagraphs.push(currentPara.trim());
+                            currentPara = lineText;
+                        } else if (currentPara.endsWith('-')) {
+                            currentPara = currentPara.slice(0, -1) + lineText;
+                        } else {
+                            currentPara += ' ' + lineText;
+                        }
+                    }
+                    if (currentPara.trim()) {
+                        pageParagraphs.push(currentPara.trim());
+                    }
+
+                    extractedPages.push(pageParagraphs.join('\n\n'));
+                }
+
+                const cleanText = extractedPages.filter(Boolean).join('\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+                if (!cleanText) {
+                    els.pdfImportStatus.textContent = "Não foi possível extrair texto selecionável deste PDF (pode ser um documento digitalizado como imagem).";
+                } else {
+                    const cleanTitle = file.name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim();
+                    if (!els.inputDocTitle.value.trim() || els.inputDocTitle.value === SAMPLE_STUDY_TITLE) {
+                        els.inputDocTitle.value = cleanTitle;
+                    }
+                    els.inputRawText.value = cleanText;
+                    state.currentSavedTextId = null;
+                    state.highlights = {};
+                    state.comments = {};
+                    state.activeRecalls = [];
+                    updateEditorStats();
+                    els.pdfImportStatus.textContent = `PDF "${file.name}" convertido com sucesso (${totalPages} páginas).`;
+                }
+            } catch (err) {
+                els.pdfImportStatus.textContent = `Erro ao ler PDF: ${err.message || 'arquivo inválido'}.`;
+            } finally {
+                els.pdfImportLabel.textContent = "Importar PDF";
+                els.btnImportPdf.disabled = false;
+                els.inputPdfFile.value = '';
+            }
+        }
+
+        // =====================================================================
+        // GERENCIAMENTO DE TEXTOS SALVOS, DESTAQUES E COMENTÁRIOS
+        // =====================================================================
+        function getSavedTexts() {
+            try {
+                return JSON.parse(localStorage.getItem('kognos_saved_texts') || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveCurrentText(silent = false) {
+            const title = els.inputDocTitle.value.trim() || "Estudo Sem Título";
+            const text = els.inputRawText.value.trim();
+
+            if (!text) {
+                if (!silent) {
+                    const originalText = els.btnSaveText.innerHTML;
+                    els.btnSaveText.innerHTML = `<span>Texto Vazio!</span>`;
+                    els.btnSaveText.style.color = '#ef4444';
+                    setTimeout(() => { els.btnSaveText.innerHTML = originalText; els.btnSaveText.style.color = ''; }, 2000);
+                }
+                return null;
+            }
+
+            let savedTexts = getSavedTexts();
+            let currentItem = state.currentSavedTextId ? savedTexts.find(t => t.id === state.currentSavedTextId) : null;
+            const dateLabel = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+            if (currentItem) {
+                currentItem.title = title;
+                currentItem.text = text;
+                currentItem.date = dateLabel;
+                currentItem.progress = { page: state.currentPageIndex, block: state.focusedBlockIndex };
+                currentItem.highlights = state.highlights;
+                currentItem.comments = state.comments;
+                currentItem.activeRecalls = state.activeRecalls;
+            } else {
+                const newText = {
+                    id: Date.now().toString(),
+                    title: title,
+                    text: text,
+                    date: dateLabel,
+                    progress: { page: state.currentPageIndex, block: state.focusedBlockIndex },
+                    highlights: state.highlights,
+                    comments: state.comments,
+                    activeRecalls: state.activeRecalls
+                };
+                savedTexts.unshift(newText);
+                state.currentSavedTextId = newText.id;
+                currentItem = newText;
+            }
+
+            localStorage.setItem('kognos_saved_texts', JSON.stringify(savedTexts));
+            if (state.mode === 'editor') renderSavedTexts();
+
+            if (!silent && els.btnSaveText) {
+                const originalText = els.btnSaveText.innerHTML;
+                els.btnSaveText.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg><span>Salvo!</span>`;
+                setTimeout(() => { els.btnSaveText.innerHTML = originalText; }, 2000);
+            }
+            return currentItem;
+        }
+
+        function autoPersistStudyState(toastMsg = null) {
+            const wasUnsaved = !state.currentSavedTextId;
+            saveCurrentText(true);
+            if (wasUnsaved && toastMsg) {
+                showToast(toastMsg);
+            }
+        }
+
+        function loadSavedText(id, autoStart = false) {
+            const savedTexts = getSavedTexts();
+            const item = savedTexts.find(t => t.id === id);
+            if (item) {
+                els.inputDocTitle.value = item.title;
+                els.inputRawText.value = item.text;
+                state.currentSavedTextId = id;
+                state.highlights = item.highlights || {};
+                state.comments = item.comments || {};
+                state.activeRecalls = item.activeRecalls || [];
+                updateEditorStats();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                if (autoStart) {
+                    startReadingSession(item.progress);
+                }
+            }
+        }
+
+        function deleteSavedText(id) {
+            let savedTexts = getSavedTexts();
+            savedTexts = savedTexts.filter(t => t.id !== id);
+            if (state.currentSavedTextId === id) {
+                state.currentSavedTextId = null;
+                state.highlights = {};
+                state.comments = {};
+                state.activeRecalls = [];
+            }
+            localStorage.setItem('kognos_saved_texts', JSON.stringify(savedTexts));
+            renderSavedTexts();
+        }
+
+        function updateSavedProgress() {
+            if (!state.currentSavedTextId || state.mode !== 'reading') return;
+            let savedTexts = getSavedTexts();
+            let currentItem = savedTexts.find(t => t.id === state.currentSavedTextId);
+            if (currentItem) {
+                currentItem.progress = { page: state.currentPageIndex, block: state.focusedBlockIndex };
+                currentItem.highlights = state.highlights;
+                currentItem.comments = state.comments;
+                currentItem.activeRecalls = state.activeRecalls;
+                localStorage.setItem('kognos_saved_texts', JSON.stringify(savedTexts));
+            }
+        }
+
+        function renderSavedTexts() {
+            const savedTexts = getSavedTexts();
+            els.savedTextsContainer.innerHTML = '';
+
+            if (savedTexts.length === 0) {
+                els.savedTextsContainer.innerHTML = `<div class="col-span-full text-xs text-center py-8 border border-dashed rounded-xl" style="border-color: var(--border-color); color: var(--text-muted);">Nenhum texto salvo ainda. Seus estudos aparecerão aqui.</div>`;
+                return;
+            }
+
+            savedTexts.forEach(item => {
+                const progressText = item.progress && (item.progress.page > 0 || item.progress.block > 0)
+                    ? `<span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">Pág. ${item.progress.page + 1}</span>`
+                    : '';
+
+                const hlCount = item.highlights ? Object.values(item.highlights).reduce((acc, arr) => acc + arr.length, 0) : 0;
+                const commentCount = item.comments ? Object.keys(item.comments).length : 0;
+                const metaBadges = [
+                    hlCount > 0 ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">${hlCount} destaque${hlCount > 1 ? 's' : ''}</span>` : '',
+                    commentCount > 0 ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 text-stone-800">${commentCount} nota${commentCount > 1 ? 's' : ''}</span>` : ''
+                ].filter(Boolean).join(' ');
+
+                const card = document.createElement('div');
+                card.className = 'ergo-card rounded-xl p-4 flex flex-col justify-between shadow-sm';
+                card.innerHTML = `
+                    <div class="mb-3">
+                        <h4 class="font-semibold text-sm truncate" style="color: var(--text-primary);" title="${item.title}">${item.title}</h4>
+                        <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-muted);">${item.date}</p>
+                            ${progressText}
+                            ${metaBadges}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 mt-auto pt-3 border-t" style="border-color: var(--border-color);">
+                        <button class="btn-continue-saved flex-1 ergo-btn-primary py-1.5 rounded-lg text-xs font-medium transition-colors shadow-sm" data-id="${item.id}">Continuar</button>
+                        <button class="btn-load-saved ergo-btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium transition-colors" data-id="${item.id}">Editar</button>
+                        <button class="btn-delete-saved ergo-btn-secondary px-2 py-1.5 rounded-lg text-xs font-medium text-red-600 transition-colors hover:bg-red-50" data-id="${item.id}" title="Deletar">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </div>
+                `;
+                els.savedTextsContainer.appendChild(card);
+            });
+
+            document.querySelectorAll('.btn-continue-saved').forEach(btn => {
+                btn.addEventListener('click', (e) => loadSavedText(e.currentTarget.getAttribute('data-id'), true));
+            });
+            document.querySelectorAll('.btn-load-saved').forEach(btn => {
+                btn.addEventListener('click', (e) => loadSavedText(e.currentTarget.getAttribute('data-id'), false));
+            });
+            document.querySelectorAll('.btn-delete-saved').forEach(btn => {
+                btn.addEventListener('click', (e) => deleteSavedText(e.currentTarget.getAttribute('data-id')));
+            });
+        }
+
+        function exportBackupJson() {
+            const data = getSavedTexts();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `kognos-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importBackupJson(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (!Array.isArray(imported)) throw new Error("Formato inválido");
+                    const existing = getSavedTexts();
+                    const map = new Map(existing.map(item => [item.id, item]));
+                    imported.forEach(item => {
+                        if (item && item.id && item.text) {
+                            map.set(item.id, item);
+                        }
+                    });
+                    localStorage.setItem('kognos_saved_texts', JSON.stringify(Array.from(map.values())));
+                    renderSavedTexts();
+                } catch (err) {
+                    els.pdfImportStatus.textContent = "Arquivo de backup JSON inválido.";
+                    els.pdfImportStatus.classList.remove('hidden');
+                } finally {
+                    els.inputImportBackup.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // =====================================================================
+        // DESTAQUES DE TEXTO (HIGHLIGHTS) E COMENTÁRIOS LATERAIS EXPANSÍVEIS
+        // =====================================================================
+        function applyHighlightsToElement(element, globalIndex) {
+            const ranges = state.highlights[globalIndex];
+            if (!ranges || ranges.length === 0) return;
+
+            const sorted = [...ranges].sort((a, b) => a.start - b.start);
+            let charOffset = 0;
+
+            function wrapRangeInTextNodes(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.nodeValue;
+                    const nodeStart = charOffset;
+                    const nodeEnd = charOffset + text.length;
+                    charOffset = nodeEnd;
+
+                    const overlapping = sorted.filter(r => r.end > nodeStart && r.start < nodeEnd);
+                    if (overlapping.length === 0) return;
+
+                    const frag = document.createDocumentFragment();
+                    let cursor = 0;
+
+                    for (const r of overlapping) {
+                        const localStart = Math.max(0, r.start - nodeStart);
+                        const localEnd = Math.min(text.length, r.end - nodeStart);
+                        if (localStart > cursor) {
+                            frag.appendChild(document.createTextNode(text.slice(cursor, localStart)));
+                        }
+                        if (localEnd > localStart) {
+                            const mark = document.createElement('mark');
+                            mark.className = 'ergo-highlight';
+                            mark.dataset.hlColor = r.color;
+                            mark.dataset.globalIndex = globalIndex;
+                            mark.dataset.hlStart = r.start;
+                            mark.dataset.hlEnd = r.end;
+                            mark.textContent = text.slice(localStart, localEnd);
+                            frag.appendChild(mark);
+                        }
+                        cursor = Math.max(cursor, localEnd);
+                    }
+
+                    if (cursor < text.length) {
+                        frag.appendChild(document.createTextNode(text.slice(cursor)));
+                    }
+
+                    node.parentNode.replaceChild(frag, node);
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.classList.contains('ergo-comment-anchor')) return;
+                    Array.from(node.childNodes).forEach(wrapRangeInTextNodes);
+                }
+            }
+
+            Array.from(element.childNodes).forEach(wrapRangeInTextNodes);
+        }
+
+        function getTextOffsetWithinParagraph(paragraphEl, targetNode, targetOffset) {
+            let offset = 0;
+            let found = false;
+
+            function traverse(node) {
+                if (found) return;
+                if (node === targetNode) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        offset += targetOffset;
+                    } else {
+                        for (let i = 0; i < targetOffset && i < node.childNodes.length; i++) {
+                            offset += getNodeTextLength(node.childNodes[i]);
+                        }
+                    }
+                    found = true;
+                    return;
+                }
+                if (node.nodeType === Node.TEXT_NODE) {
+                    offset += node.nodeValue.length;
+                } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList.contains('ergo-comment-anchor')) {
+                    for (const child of node.childNodes) {
+                        traverse(child);
+                        if (found) return;
+                    }
+                }
+            }
+
+            function getNodeTextLength(n) {
+                if (n.nodeType === Node.TEXT_NODE) return n.nodeValue.length;
+                if (n.nodeType === Node.ELEMENT_NODE && !n.classList.contains('ergo-comment-anchor')) {
+                    let len = 0;
+                    n.childNodes.forEach(c => { len += getNodeTextLength(c); });
+                    return len;
+                }
+                return 0;
+            }
+
+            traverse(paragraphEl);
+            return offset;
+        }
+
+        function mergeHighlightRanges(existingList, newRange) {
+            const result = [];
+            for (const item of existingList) {
+                if (item.end <= newRange.start || item.start >= newRange.end) {
+                    result.push(item);
+                } else {
+                    if (item.start < newRange.start) {
+                        result.push({ start: item.start, end: newRange.start, color: item.color });
+                    }
+                    if (item.end > newRange.end) {
+                        result.push({ start: newRange.end, end: item.end, color: item.color });
+                    }
+                }
+            }
+            result.push(newRange);
+            return result.sort((a, b) => a.start - b.start);
+        }
+
+        function applyHighlightColor(color) {
+            if (state.pendingSelection && state.pendingSelection.length > 0) {
+                for (const sel of state.pendingSelection) {
+                    const list = state.highlights[sel.globalIndex] || [];
+                    state.highlights[sel.globalIndex] = mergeHighlightRanges(list, {
+                        start: sel.start,
+                        end: sel.end,
+                        color
+                    });
+                }
+                state.pendingSelection = null;
+                window.getSelection()?.removeAllRanges();
+                hideHighlightToolbar();
+                renderCurrentStaticPage();
+                autoPersistStudyState("Texto salvo automaticamente com suas marcações");
+            } else if (state.activeMarkTarget) {
+                const { globalIndex, start, end } = state.activeMarkTarget;
+                const list = state.highlights[globalIndex] || [];
+                state.highlights[globalIndex] = mergeHighlightRanges(list, { start, end, color });
+                state.activeMarkTarget = null;
+                hideHighlightToolbar();
+                renderCurrentStaticPage();
+                autoPersistStudyState("Texto salvo automaticamente com suas marcações");
+            }
+        }
+
+        function removeSelectedHighlight() {
+            if (state.activeMarkTarget) {
+                const { globalIndex, start, end } = state.activeMarkTarget;
+                const list = state.highlights[globalIndex] || [];
+                state.highlights[globalIndex] = list.filter(r => !(r.start === start && r.end === end));
+                if (state.highlights[globalIndex].length === 0) delete state.highlights[globalIndex];
+                state.activeMarkTarget = null;
+                hideHighlightToolbar();
+                renderCurrentStaticPage();
+                updateSavedProgress();
+            } else if (state.pendingSelection && state.pendingSelection.length > 0) {
+                for (const sel of state.pendingSelection) {
+                    const list = state.highlights[sel.globalIndex] || [];
+                    const updated = [];
+                    for (const item of list) {
+                        if (item.end <= sel.start || item.start >= sel.end) {
+                            updated.push(item);
+                        } else {
+                            if (item.start < sel.start) updated.push({ start: item.start, end: sel.start, color: item.color });
+                            if (item.end > sel.end) updated.push({ start: sel.end, end: item.end, color: item.color });
+                        }
+                    }
+                    if (updated.length > 0) state.highlights[sel.globalIndex] = updated;
+                    else delete state.highlights[sel.globalIndex];
+                }
+                state.pendingSelection = null;
+                window.getSelection()?.removeAllRanges();
+                hideHighlightToolbar();
+                renderCurrentStaticPage();
+                updateSavedProgress();
+            }
+        }
+
+        function hideHighlightToolbar() {
+            if (els.highlightToolbar) {
+                els.highlightToolbar.classList.add('hidden');
+            }
+        }
+
+        function handleTextSelectionEnd() {
+            if (state.mode !== 'reading') return;
+            const selection = window.getSelection();
+            if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+
+            const range = selection.getRangeAt(0);
+            const paragraphs = els.staticPageFrame.querySelectorAll('.ergo-paragraph');
+            const selectedSegments = [];
+
+            paragraphs.forEach(pEl => {
+                if (range.intersectsNode(pEl)) {
+                    const globalIndex = parseInt(pEl.dataset.globalIndex, 10);
+                    const fullLen = getTextOffsetWithinParagraph(pEl, pEl, pEl.childNodes.length);
+                    const start = pEl.contains(range.startContainer)
+                        ? getTextOffsetWithinParagraph(pEl, range.startContainer, range.startOffset)
+                        : 0;
+                    const end = pEl.contains(range.endContainer)
+                        ? getTextOffsetWithinParagraph(pEl, range.endContainer, range.endOffset)
+                        : fullLen;
+
+                    if (end > start) {
+                        selectedSegments.push({ globalIndex, start, end });
+                    }
+                }
+            });
+
+            if (selectedSegments.length === 0) return;
+
+            state.pendingSelection = selectedSegments;
+            state.activeMarkTarget = null;
+
+            const rect = range.getBoundingClientRect();
+            const toolbar = els.highlightToolbar;
+            toolbar.classList.remove('hidden');
+            const tbRect = toolbar.getBoundingClientRect();
+            const left = Math.max(12, Math.min(window.innerWidth - tbRect.width - 12, rect.left + rect.width / 2 - tbRect.width / 2));
+            const top = Math.max(12, rect.top - tbRect.height - 8);
+            toolbar.style.left = `${left}px`;
+            toolbar.style.top = `${top}px`;
+        }
+
+        function openCommentEditorForGlobalIndex(globalIndex, anchorEl = null) {
+            state.expandedCommentGlobalIndex = globalIndex;
+            state.editingCommentGlobalIndex = globalIndex;
+            renderCommentFloatingPopover(globalIndex, anchorEl);
+        }
+
+        function toggleCommentPopover(globalIndex, anchorEl) {
+            if (state.expandedCommentGlobalIndex === globalIndex && !els.commentFloatingPopover.classList.contains('hidden')) {
+                closeCommentPopover();
+                return;
+            }
+            state.expandedCommentGlobalIndex = globalIndex;
+            state.editingCommentGlobalIndex = null;
+            renderCommentFloatingPopover(globalIndex, anchorEl);
+        }
+
+        function closeCommentPopover() {
+            state.expandedCommentGlobalIndex = null;
+            state.editingCommentGlobalIndex = null;
+            if (els.commentFloatingPopover) {
+                els.commentFloatingPopover.classList.add('hidden');
+            }
+            document.querySelectorAll('.ergo-comment-toggle-btn.is-open').forEach(b => b.classList.remove('is-open'));
+        }
+
+        function renderCommentFloatingPopover(globalIndex, anchorEl = null) {
+            const pop = els.commentFloatingPopover;
+            if (!pop) return;
+
+            const pEl = anchorEl || els.staticPageFrame.querySelector(`.ergo-paragraph[data-global-index="${globalIndex}"]`);
+            if (!pEl) return;
+
+            document.querySelectorAll('.ergo-comment-toggle-btn').forEach(btn => {
+                btn.classList.toggle('is-open', parseInt(btn.dataset.globalIndex, 10) === globalIndex);
+            });
+
+            const existingText = state.comments[globalIndex] || '';
+            const isEditing = state.editingCommentGlobalIndex === globalIndex || !existingText;
+
+            if (isEditing) {
+                pop.innerHTML = `
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Anotação do Bloco</span>
+                        <button type="button" id="btn-close-comment-pop" class="text-xs px-1.5 rounded hover:opacity-75" style="color: var(--text-muted);">✕</button>
+                    </div>
+                    <textarea id="textarea-comment-pop" rows="3" placeholder="Escreva sua anotação..." class="ergo-input w-full p-2 rounded-lg text-xs resize-none mb-2">${existingText}</textarea>
+                    <div class="flex items-center justify-end gap-1.5">
+                        <button type="button" id="btn-cancel-comment-pop" class="ergo-btn-secondary px-2.5 py-1 rounded-lg text-[11px] font-medium">Cancelar</button>
+                        <button type="button" id="btn-save-comment-pop" class="ergo-btn-primary px-3 py-1 rounded-lg text-[11px] font-medium">Enviar</button>
+                    </div>
+                `;
+            } else {
+                const safeHtml = existingText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                pop.innerHTML = `
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--accent-color);">Nota do Parágrafo</span>
+                        <button type="button" id="btn-close-comment-pop" class="text-xs px-1.5 rounded hover:opacity-75" style="color: var(--text-muted);">✕</button>
+                    </div>
+                    <div class="mb-2.5 whitespace-pre-wrap break-words" style="color: var(--text-primary);">${safeHtml}</div>
+                    <div class="flex items-center justify-end gap-1.5 pt-1.5 border-t" style="border-color: var(--border-color);">
+                        <button type="button" id="btn-edit-comment-pop" class="ergo-btn-secondary px-2.5 py-1 rounded-lg text-[11px] font-medium">Editar</button>
+                        <button type="button" id="btn-delete-comment-pop" class="ergo-btn-secondary px-2.5 py-1 rounded-lg text-[11px] font-medium text-red-600">Excluir</button>
+                    </div>
+                `;
+            }
+
+            pop.classList.remove('hidden');
+
+            const triggerBtn = pEl.querySelector('.ergo-comment-toggle-btn');
+            const refRect = (triggerBtn || pEl).getBoundingClientRect();
+            const popRect = pop.getBoundingClientRect();
+            const isLeftSide = pEl.dataset.columnSide === 'left' && isEffectiveDoublePage();
+
+            let left = isLeftSide ? refRect.right + 8 : refRect.left - popRect.width - 8;
+            if (left < 12) left = Math.min(window.innerWidth - popRect.width - 12, refRect.right + 8);
+            if (left + popRect.width > window.innerWidth - 12) left = Math.max(12, window.innerWidth - popRect.width - 12);
+
+            const top = Math.max(12, Math.min(window.innerHeight - popRect.height - 12, refRect.top));
+            pop.style.left = `${left}px`;
+            pop.style.top = `${top}px`;
+
+            pop.querySelector('#btn-close-comment-pop')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeCommentPopover();
+            });
+
+            if (isEditing) {
+                const ta = pop.querySelector('#textarea-comment-pop');
+                ta?.focus();
+                ta?.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        saveCommentText(globalIndex, ta.value);
+                    }
+                });
+                pop.querySelector('#btn-cancel-comment-pop')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (existingText) {
+                        state.editingCommentGlobalIndex = null;
+                        renderCommentFloatingPopover(globalIndex, pEl);
+                    } else {
+                        closeCommentPopover();
+                    }
+                });
+                pop.querySelector('#btn-save-comment-pop')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    saveCommentText(globalIndex, ta.value);
+                });
+            } else {
+                pop.querySelector('#btn-edit-comment-pop')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    state.editingCommentGlobalIndex = globalIndex;
+                    renderCommentFloatingPopover(globalIndex, pEl);
+                });
+                pop.querySelector('#btn-delete-comment-pop')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    delete state.comments[globalIndex];
+                    closeCommentPopover();
+                    renderCurrentStaticPage();
+                    updateSavedProgress();
+                });
+            }
+        }
+
+        function saveCommentText(globalIndex, rawComment) {
+            const trimmed = (rawComment || '').trim();
+            if (!trimmed) {
+                delete state.comments[globalIndex];
+            } else {
+                state.comments[globalIndex] = trimmed;
+            }
+            state.editingCommentGlobalIndex = null;
+            renderCurrentStaticPage();
+            autoPersistStudyState("Texto salvo automaticamente com suas anotações");
+            if (state.comments[globalIndex]) {
+                renderCommentFloatingPopover(globalIndex);
+            } else {
+                closeCommentPopover();
+            }
+        }
+
+        // =====================================================================
+        // PAGINAÇÃO ESTÁTICA E RENDERIZAÇÃO (1 PÁGINA OU PÁGINA DUPLA)
+        // =====================================================================
+        function computeStaticPages() {
+            const rawParagraphs = extractLogicalParagraphs(els.inputRawText.value);
+            if (rawParagraphs.length === 0) {
+                state.pages = [[{ html: "<p>Nenhum texto inserido. Volte ao editor para adicionar seu material de estudo.</p>", globalIndex: 0 }]];
+                return;
+            }
+
+            const viewportRect = els.pageViewportBox.getBoundingClientRect();
+            const fallbackHeight = Math.max(240, window.innerHeight - 250);
+            const rawHeight = viewportRect.height > 80 ? viewportRect.height : fallbackHeight;
+            const availableHeight = Math.max(160, rawHeight - 12);
+
+            const contentRect = els.staticPageContent.getBoundingClientRect();
+            const contentWidth = contentRect.width > 120 ? contentRect.width : Math.min(640, window.innerWidth - 80);
+
+            state.lastViewportWidth = Math.round(contentWidth);
+            state.lastViewportHeight = Math.round(rawHeight);
+
+            els.measurer.style.width = `${contentWidth}px`;
+            els.measurer.innerHTML = '';
+
+            const pages = [];
+            let currentPage = [];
+
+            rawParagraphs.forEach((html, globalIndex) => {
+                const blockObj = { html, globalIndex };
+                const pEl = createParagraphElement(blockObj, false);
+                els.measurer.appendChild(pEl);
+
+                if (els.measurer.offsetHeight > availableHeight && currentPage.length > 0) {
+                    pages.push(currentPage);
+                    currentPage = [blockObj];
+                    els.measurer.innerHTML = '';
+                    els.measurer.appendChild(createParagraphElement(blockObj, false));
+                } else {
+                    currentPage.push(blockObj);
+                }
+            });
+
+            if (currentPage.length > 0) {
+                pages.push(currentPage);
+            }
+
+            state.pages = pages.length > 0 ? pages : [[{ html: "<p>Texto vazio.</p>", globalIndex: 0 }]];
+
+            if (state.currentPageIndex >= state.pages.length) {
+                state.currentPageIndex = state.pages.length - 1;
+            }
+            if (isEffectiveDoublePage() && state.currentPageIndex % 2 !== 0) {
+                state.currentPageIndex = Math.max(0, state.currentPageIndex - 1);
+            }
+            const maxBlocks = getActiveSpreadBlocks().length;
+            if (state.focusedBlockIndex >= maxBlocks) {
+                state.focusedBlockIndex = Math.max(0, maxBlocks - 1);
+            }
+        }
+
+        function createParagraphElement(blockObj, isInteractive = true, localIndex = 0, applyVisuals = false, side = 'right') {
+            const block = document.createElement('div');
+            block.className = 'ergo-paragraph is-unfocused';
+            block.dataset.globalIndex = blockObj.globalIndex;
+            block.dataset.columnSide = side;
+            block.innerHTML = blockObj.html;
+
+            if (applyVisuals) {
+                applyHighlightsToElement(block, blockObj.globalIndex);
+                if (state.beeline !== 'off') {
+                    applyBeeLineToElement(block, els.selectMeasure.value, state.beeline);
+                }
+            }
+
+            if (isInteractive) {
+                block.dataset.index = localIndex;
+                block.addEventListener('click', (e) => {
+                    if (e.target.closest('.ergo-comment-anchor')) return;
+                    if (e.target.tagName === 'MARK' && e.target.classList.contains('ergo-highlight')) {
+                        const gIdx = parseInt(e.target.dataset.globalIndex, 10);
+                        const start = parseInt(e.target.dataset.hlStart, 10);
+                        const end = parseInt(e.target.dataset.hlEnd, 10);
+                        state.activeMarkTarget = { globalIndex: gIdx, start, end };
+                        state.pendingSelection = null;
+                        const rect = e.target.getBoundingClientRect();
+                        const toolbar = els.highlightToolbar;
+                        toolbar.classList.remove('hidden');
+                        const tbRect = toolbar.getBoundingClientRect();
+                        toolbar.style.left = `${Math.max(12, Math.min(window.innerWidth - tbRect.width - 12, rect.left))}px`;
+                        toolbar.style.top = `${Math.max(12, rect.top - tbRect.height - 8)}px`;
+                    }
+                    setFocusedBlock(localIndex);
+                });
+
+                if (state.comments[blockObj.globalIndex]) {
+                    const anchor = document.createElement('div');
+                    anchor.className = `ergo-comment-anchor ${side === 'left' ? 'side-left' : 'side-right'}`;
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'ergo-comment-toggle-btn';
+                    btn.dataset.globalIndex = blockObj.globalIndex;
+                    btn.title = 'Ver anotação deste parágrafo';
+                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h6m-6 8l-4-4V6a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H7z"/></svg>`;
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        setFocusedBlock(localIndex);
+                        toggleCommentPopover(blockObj.globalIndex, block);
+                    });
+                    anchor.appendChild(btn);
+                    block.appendChild(anchor);
+                }
+            }
+            return block;
+        }
+
+        function getActiveSpreadBlocks() {
+            const leftBlocks = state.pages[state.currentPageIndex] || [];
+            if (isEffectiveDoublePage() && state.currentPageIndex + 1 < state.pages.length) {
+                const rightBlocks = state.pages[state.currentPageIndex + 1] || [];
+                return [...leftBlocks, ...rightBlocks];
+            }
+            return leftBlocks;
+        }
+
+        function renderCurrentStaticPage() {
+            const totalPages = state.pages.length;
+            const doubleActive = isEffectiveDoublePage();
+            const leftParagraphs = state.pages[state.currentPageIndex] || [];
+            const hasRightPage = doubleActive && (state.currentPageIndex + 1 < totalPages);
+            const rightParagraphs = hasRightPage ? state.pages[state.currentPageIndex + 1] : [];
+
+            const docTitle = els.inputDocTitle.value.trim() || "Estudo em Ergonomia Cognitiva";
+            els.pageHeaderTitle.textContent = docTitle;
+
+            if (doubleActive) {
+                const rightNum = hasRightPage ? `–${state.currentPageIndex + 2}` : '';
+                els.pageNumberTop.textContent = `Págs. ${state.currentPageIndex + 1}${rightNum} / ${totalPages}`;
+                els.pageSpatialQuadrant.textContent = "LIVRO ABERTO • TOPOGRAFIA DUPLA";
+            } else {
+                els.pageNumberTop.textContent = `Pág. ${state.currentPageIndex + 1} / ${totalPages}`;
+                const isOddPage = (state.currentPageIndex + 1) % 2 !== 0;
+                els.pageSpatialQuadrant.textContent = isOddPage
+                    ? "PÁGINA ÍMPAR • TOPOGRAFIA DIREITA"
+                    : "PÁGINA PAR • TOPOGRAFIA ESQUERDA";
+            }
+
+            els.staticPageContent.innerHTML = '';
+            els.staticPageContentRight.innerHTML = '';
+
+            let localIdx = 0;
+            leftParagraphs.forEach((blockObj) => {
+                const side = doubleActive ? 'left' : 'right';
+                const pEl = createParagraphElement(blockObj, true, localIdx, true, side);
+                els.staticPageContent.appendChild(pEl);
+                localIdx++;
+            });
+
+            if (doubleActive) {
+                els.bookSpineDivider.classList.remove('hidden');
+                els.staticPageContentRight.classList.remove('hidden');
+                rightParagraphs.forEach((blockObj) => {
+                    const pEl = createParagraphElement(blockObj, true, localIdx, true, 'right');
+                    els.staticPageContentRight.appendChild(pEl);
+                    localIdx++;
+                });
+            } else {
+                els.bookSpineDivider.classList.add('hidden');
+                els.staticPageContentRight.classList.add('hidden');
+            }
+
+            updateParagraphFocusStyles();
+
+            const step = doubleActive ? 2 : 1;
+            const isFirstPage = state.currentPageIndex === 0;
+            const isLastPage = state.currentPageIndex + step >= totalPages;
+            els.btnPrevPage.disabled = isFirstPage;
+            els.btnNextPage.disabled = isLastPage;
+
+            const spreadBlocks = getActiveSpreadBlocks();
+            els.btnPrevBlock.disabled = isFirstPage && state.focusedBlockIndex === 0;
+            els.btnNextBlock.disabled = isLastPage && state.focusedBlockIndex >= spreadBlocks.length - 1;
+        }
+
+        function updateParagraphFocusStyles() {
+            const paragraphs = els.staticPageFrame.querySelectorAll('.ergo-paragraph');
+            const totalBlocks = paragraphs.length;
+
+            paragraphs.forEach((pEl, idx) => {
+                if (idx === state.focusedBlockIndex) {
+                    pEl.classList.add('is-focused');
+                    pEl.classList.remove('is-unfocused');
+                } else {
+                    pEl.classList.remove('is-focused');
+                    pEl.classList.add('is-unfocused');
+                }
+            });
+
+            els.focusedBlockIndicator.textContent = `${Math.min(state.focusedBlockIndex + 1, Math.max(1, totalBlocks))} de ${Math.max(1, totalBlocks)}`;
+
+            const step = isEffectiveDoublePage() ? 2 : 1;
+            const isFirstPage = state.currentPageIndex === 0;
+            const isLastPage = state.currentPageIndex + step >= state.pages.length;
+            els.btnPrevBlock.disabled = isFirstPage && state.focusedBlockIndex === 0;
+            els.btnNextBlock.disabled = isLastPage && state.focusedBlockIndex >= totalBlocks - 1;
+        }
+
+        function setFocusedBlock(index) {
+            const spreadBlocks = getActiveSpreadBlocks();
+            if (index >= 0 && index < spreadBlocks.length) {
+                state.focusedBlockIndex = index;
+                updateParagraphFocusStyles();
+                updateSavedProgress();
+            }
+        }
+
+        function nextLogicalBlock() {
+            if (state.isBreakActive) return;
+            closeCommentPopover();
+            const spreadBlocks = getActiveSpreadBlocks();
+            const step = isEffectiveDoublePage() ? 2 : 1;
+
+            if (state.focusedBlockIndex < spreadBlocks.length - 1) {
+                state.focusedBlockIndex++;
+                updateParagraphFocusStyles();
+                updateSavedProgress();
+            } else if (state.currentPageIndex + step < state.pages.length) {
+                goToPage(state.currentPageIndex + step, 0);
+            }
+        }
+
+        function prevLogicalBlock() {
+            if (state.isBreakActive) return;
+            closeCommentPopover();
+            const step = isEffectiveDoublePage() ? 2 : 1;
+
+            if (state.focusedBlockIndex > 0) {
+                state.focusedBlockIndex--;
+                updateParagraphFocusStyles();
+                updateSavedProgress();
+            } else if (state.currentPageIndex > 0) {
+                const prevPageIdx = Math.max(0, state.currentPageIndex - step);
+                const prevSpreadCount = (state.pages[prevPageIdx] || []).length +
+                    (isEffectiveDoublePage() && prevPageIdx + 1 < state.pages.length ? (state.pages[prevPageIdx + 1] || []).length : 0);
+                goToPage(prevPageIdx, Math.max(0, prevSpreadCount - 1));
+            }
+        }
+
+        function goToPage(pageIndex, targetBlockIndex = 0) {
+            if (state.isBreakActive) return;
+            closeCommentPopover();
+            hideHighlightToolbar();
+            const normalizedIdx = isEffectiveDoublePage() ? Math.floor(pageIndex / 2) * 2 : pageIndex;
+            if (normalizedIdx >= 0 && normalizedIdx < state.pages.length) {
+                state.currentPageIndex = normalizedIdx;
+                const spreadBlocks = getActiveSpreadBlocks();
+                state.focusedBlockIndex = Math.max(0, Math.min(targetBlockIndex, spreadBlocks.length - 1));
+                renderCurrentStaticPage();
+                updateSavedProgress();
+            }
+        }
+
+        function setSidebarCollapsed(collapsed) {
+            state.sidebarCollapsed = collapsed;
+            if (collapsed) {
+                els.readerSidebar.classList.add('hidden');
+                els.collapsedSidebarControls.classList.remove('hidden');
+                if (state.doublePage) {
+                    els.btnQuickSinglePage.classList.remove('hidden');
+                } else {
+                    els.btnQuickSinglePage.classList.add('hidden');
+                }
+            } else {
+                els.readerSidebar.classList.remove('hidden');
+                els.collapsedSidebarControls.classList.add('hidden');
+            }
+        }
+
+        function setDoublePageMode(enabled, recalculate = true) {
+            state.doublePage = enabled;
+            if (enabled) {
+                els.btnLayoutDouble.style.backgroundColor = 'var(--accent-soft)';
+                els.btnLayoutDouble.style.color = 'var(--text-primary)';
+                els.btnLayoutSingle.style.backgroundColor = 'transparent';
+                els.btnLayoutSingle.style.color = 'var(--text-muted)';
+                els.staticPageFrame.classList.remove('max-w-4xl');
+                els.staticPageFrame.classList.add('max-w-7xl');
+                els.pageViewportBox.classList.add('double-page-spread');
+                els.pageViewportBox.classList.remove('flex', 'flex-col', 'justify-start', 'items-center');
+                setSidebarCollapsed(true);
+            } else {
+                els.btnLayoutSingle.style.backgroundColor = 'var(--accent-soft)';
+                els.btnLayoutSingle.style.color = 'var(--text-primary)';
+                els.btnLayoutDouble.style.backgroundColor = 'transparent';
+                els.btnLayoutDouble.style.color = 'var(--text-muted)';
+                els.staticPageFrame.classList.remove('max-w-7xl');
+                els.staticPageFrame.classList.add('max-w-4xl');
+                els.pageViewportBox.classList.remove('double-page-spread');
+                els.pageViewportBox.classList.add('flex', 'flex-col', 'justify-start', 'items-center');
+                els.btnQuickSinglePage.classList.add('hidden');
+            }
+
+            if (recalculate && state.mode === 'reading') {
+                requestAnimationFrame(() => {
+                    computeStaticPages();
+                    renderCurrentStaticPage();
+                });
+            }
+        }
+
+        function startReadingSession(savedProgress = null) {
+            const raw = els.inputRawText.value.trim();
+            if (!raw) {
+                els.inputRawText.value = SAMPLE_STUDY_TEXT;
+                els.inputDocTitle.value = SAMPLE_STUDY_TITLE;
+                state.currentSavedTextId = null;
+                updateEditorStats();
+            }
+
+            state.mode = 'reading';
+            document.body.classList.add('reading-mode-active');
+            els.editorView.classList.add('hidden');
+            els.readerView.classList.remove('hidden');
+
+            if (state.doublePage || window.innerWidth < 768) {
+                setSidebarCollapsed(true);
+            } else {
+                setSidebarCollapsed(false);
+            }
+
+            requestAnimationFrame(() => {
+                computeStaticPages();
+
+                if (savedProgress && savedProgress.page !== undefined) {
+                    const targetPage = Math.min(savedProgress.page, state.pages.length - 1);
+                    state.currentPageIndex = isEffectiveDoublePage() ? Math.floor(targetPage / 2) * 2 : targetPage;
+                    const maxBlk = getActiveSpreadBlocks().length - 1;
+                    state.focusedBlockIndex = Math.max(0, Math.min(savedProgress.block || 0, maxBlk));
+                } else {
+                    state.currentPageIndex = 0;
+                    state.focusedBlockIndex = 0;
+                }
+
+                renderCurrentStaticPage();
+                if (state.isOcularTimerEnabled) {
+                    start202020BackgroundTimer();
+                } else {
+                    updateOcularTimerControlsUI();
+                }
+                window.focus();
+            });
+        }
+
+        function returnToEditor() {
+            state.mode = 'editor';
+            closeCommentPopover();
+            hideHighlightToolbar();
+            document.body.classList.remove('reading-mode-active');
+            els.readerView.classList.add('hidden');
+            els.editorView.classList.remove('hidden');
+            stop202020BackgroundTimer();
+            renderSavedTexts();
+
+            state.returnToPageInfo = null;
+            if (els.returnBanner) els.returnBanner.classList.add('hidden');
+        }
+
+        // =====================================================================
+        // MODAL DE VER TODOS OS COMENTÁRIOS E NAVEGAÇÃO DE RETORNO
+        // =====================================================================
+        function findPositionByGlobalIndex(targetGlobalIndex) {
+            for (let pIdx = 0; pIdx < state.pages.length; pIdx++) {
+                const page = state.pages[pIdx];
+                const localIdx = page.findIndex(block => block.globalIndex === targetGlobalIndex);
+                if (localIdx !== -1) {
+                    return { pageIndex: pIdx, localBlockIndex: localIdx };
+                }
+            }
+            return null;
+        }
+
+        function renderAllCommentsModal() {
+            const listContainer = document.getElementById('all-comments-list');
+            listContainer.innerHTML = '';
+            
+            const commentKeys = Object.keys(state.comments).map(Number).sort((a, b) => a - b);
+            
+            if (commentKeys.length === 0) {
+                listContainer.innerHTML = `<div class="text-sm text-center py-8" style="color: var(--text-muted);">Nenhum comentário feito neste estudo.</div>`;
+                return;
+            }
+            
+            const rawParagraphs = extractLogicalParagraphs(els.inputRawText.value);
+            
+            commentKeys.forEach(globalIdx => {
+                const commentText = state.comments[globalIdx];
+                const paraHtml = rawParagraphs[globalIdx] || "";
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = paraHtml;
+                const textSnippet = tempDiv.textContent.substring(0, 110) + (tempDiv.textContent.length > 110 ? '...' : '');
+                
+                const card = document.createElement('div');
+                card.className = 'p-4 border rounded-xl flex flex-col gap-2 cursor-pointer transition-colors shadow-sm';
+                card.style.borderColor = 'var(--border-color)';
+                card.style.backgroundColor = 'var(--bg-primary)';
+                card.onmouseenter = () => card.style.borderColor = 'var(--accent-color)';
+                card.onmouseleave = () => card.style.borderColor = 'var(--border-color)';
+                
+                card.innerHTML = `
+                    <div class="text-[10px] uppercase tracking-wider font-semibold" style="color: var(--accent-color);">Bloco Lógico ${globalIdx + 1}</div>
+                    <div class="text-xs italic border-l-2 pl-2" style="border-color: var(--border-color); color: var(--text-muted);">"${textSnippet}"</div>
+                    <div class="text-sm mt-1 leading-snug" style="color: var(--text-primary);">${commentText.replace(/\n/g, '<br>')}</div>
+                `;
+                
+                card.addEventListener('click', () => {
+                    els.modalAllComments.classList.add('hidden');
+                    navigateToComment(globalIdx);
+                });
+                
+                listContainer.appendChild(card);
+            });
+        }
+
+        function navigateToComment(globalIndex) {
+            const pos = findPositionByGlobalIndex(globalIndex);
+            if (!pos) return;
+            
+            // Registra a posição original se ainda não houver uma
+            if (!state.returnToPageInfo) {
+                state.returnToPageInfo = {
+                    pageIndex: state.currentPageIndex,
+                    blockIndex: state.focusedBlockIndex
+                };
+            }
+            
+            goToPage(pos.pageIndex, pos.localBlockIndex);
+            
+            // Aciona a caixa de leitura do comentário após animar a tela
+            setTimeout(() => {
+                const pEl = els.staticPageFrame.querySelector(`.ergo-paragraph[data-global-index="${globalIndex}"]`);
+                if (pEl) {
+                    openCommentEditorForGlobalIndex(globalIndex, pEl);
+                }
+            }, 100);
+            
+            els.returnBanner.classList.remove('hidden');
+            if (window.innerWidth < 768) setSidebarCollapsed(true);
+        }
+
+        function returnToOriginalPage() {
+            if (state.returnToPageInfo) {
+                goToPage(state.returnToPageInfo.pageIndex, state.returnToPageInfo.blockIndex);
+                state.returnToPageInfo = null;
+            }
+            els.returnBanner.classList.add('hidden');
+            closeCommentPopover();
+        }
+
+        // =====================================================================
+        // RECUPERAÇÃO ATIVA (ACTIVE RECALL)
+        // =====================================================================
+        function openActiveRecallWriter() {
+            els.modal202020.classList.add('hidden');
+            els.textareaActiveRecall.value = '';
+            els.modalActiveRecallWriter.classList.remove('hidden');
+            setTimeout(() => els.textareaActiveRecall.focus(), 100);
+        }
+
+        function saveActiveRecallAndResume() {
+            const text = els.textareaActiveRecall.value.trim();
+            if (text) {
+                const newRecall = {
+                    timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                    date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+                    text: text,
+                    blockIndex: state.focusedBlockIndex,
+                    pageIndex: state.currentPageIndex
+                };
+                state.activeRecalls.push(newRecall);
+                updateSavedProgress();
+                showToast("Recuperação ativa salva com sucesso!");
+            }
+            els.modalActiveRecallWriter.classList.add('hidden');
+            unlockAfter202020Break();
+        }
+
+        function renderActiveRecallList() {
+            els.activeRecallItemsContainer.innerHTML = '';
+            if (!state.activeRecalls || state.activeRecalls.length === 0) {
+                els.activeRecallItemsContainer.innerHTML = `<div class="text-sm text-center py-8" style="color: var(--text-muted);">Nenhuma recuperação ativa feita neste estudo ainda. Escreva após os descansos oculares!</div>`;
+                return;
+            }
+
+            // Renderiza do mais recente para o mais antigo
+            const reversed = [...state.activeRecalls].reverse();
+            reversed.forEach((recall) => {
+                const card = document.createElement('div');
+                card.className = 'p-4 rounded-xl flex flex-col gap-2 border shadow-sm';
+                card.style.borderColor = 'var(--border-color)';
+                card.style.backgroundColor = 'var(--bg-primary)';
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] uppercase tracking-wider font-semibold" style="color: var(--accent-color);">
+                            ${recall.date} às ${recall.timestamp}
+                        </span>
+                        <span class="text-[10px] font-mono" style="color: var(--text-muted);">
+                            Pág. ${recall.pageIndex + 1}
+                        </span>
+                    </div>
+                    <div class="text-sm mt-1 leading-relaxed whitespace-pre-wrap" style="color: var(--text-primary);">${recall.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                `;
+                els.activeRecallItemsContainer.appendChild(card);
+            });
+        }
+
+        // =====================================================================
+        // TIMER DE DESCANSO OCULAR (20-20-20)
+        // =====================================================================
+        function toggleOcularTimer() {
+            if (state.isOcularTimerEnabled) {
+                stop202020BackgroundTimer();
+            } else {
+                start202020BackgroundTimer();
+            }
+        }
+
+        function start202020BackgroundTimer() {
+            state.isOcularTimerEnabled = true;
+            updateOcularTimerControlsUI();
+            if (state.readingTimerInterval) clearInterval(state.readingTimerInterval);
+            
+            state.readingTimerInterval = setInterval(() => {
+                if (state.mode !== 'reading' || state.isBreakActive) return;
+                state.readingSecondsRemaining--;
+                updateTimerDisplay();
+                if (state.readingSecondsRemaining <= 0) {
+                    trigger202020BreakLock();
+                }
+            }, 1000);
+        }
+
+        function stop202020BackgroundTimer() {
+            state.isOcularTimerEnabled = false;
+            updateOcularTimerControlsUI();
+            if (state.readingTimerInterval) {
+                clearInterval(state.readingTimerInterval);
+                state.readingTimerInterval = null;
+            }
+            state.readingSecondsRemaining = 20 * 60;
+            updateTimerDisplay();
+        }
+
+        function resetOcularTimer() {
+            state.readingSecondsRemaining = 20 * 60;
+            updateTimerDisplay();
+            if (state.isOcularTimerEnabled && !state.isBreakActive) {
+                start202020BackgroundTimer();
+            }
+        }
+        
+        function updateOcularTimerControlsUI() {
+            if (state.isOcularTimerEnabled) {
+                els.btnToggle202020.textContent = 'Pausar';
+                els.btnToggle202020.classList.add('ergo-btn-primary');
+                els.btnToggle202020.classList.remove('ergo-btn-secondary');
+                els.timerIndicatorDot.style.opacity = '1';
+                els.timerIndicatorDot.classList.remove('bg-stone-400');
+                els.timerIndicatorDot.style.backgroundColor = 'var(--accent-color)';
+                els.timerDisplay.style.opacity = '1';
+            } else {
+                els.btnToggle202020.textContent = 'Ativar';
+                els.btnToggle202020.classList.remove('ergo-btn-primary');
+                els.btnToggle202020.classList.add('ergo-btn-secondary');
+                els.timerIndicatorDot.style.opacity = '0.3';
+                els.timerIndicatorDot.style.backgroundColor = '';
+                els.timerIndicatorDot.classList.add('bg-stone-400');
+                els.timerDisplay.style.opacity = '0.5';
+            }
+        }
+
+        function updateTimerDisplay() {
+            const mins = Math.floor(state.readingSecondsRemaining / 60);
+            const secs = state.readingSecondsRemaining % 60;
+            els.timerDisplay.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function trigger202020BreakLock() {
+            state.isBreakActive = true;
+            state.breakSecondsRemaining = 20;
+
+            els.modal202020.classList.remove('hidden');
+            els.btnUnlockReading.disabled = true;
+            els.btnUnlockReading.textContent = `Aguarde o relaxamento ocular (20s)...`;
+            els.btnDoActiveRecall.classList.add('hidden');
+            els.breakCountdownNumber.textContent = `20s`;
+            els.breakProgressBar.style.width = '100%';
+
+            playErgonomicChime('start');
+
+            if (state.breakTimerInterval) clearInterval(state.breakTimerInterval);
+            state.breakTimerInterval = setInterval(() => {
+                state.breakSecondsRemaining--;
+                const pct = Math.max(0, (state.breakSecondsRemaining / 20) * 100);
+                els.breakCountdownNumber.textContent = `${state.breakSecondsRemaining}s`;
+                els.breakProgressBar.style.width = `${pct}%`;
+
+                if (state.breakSecondsRemaining > 0) {
+                    els.btnUnlockReading.textContent = `Aguarde o relaxamento ocular (${state.breakSecondsRemaining}s)...`;
+                } else {
+                    clearInterval(state.breakTimerInterval);
+                    state.breakTimerInterval = null;
+                    els.breakCountdownNumber.textContent = "Concluído";
+                    els.btnUnlockReading.disabled = false;
+                    els.btnUnlockReading.textContent = "Retomar Leitura";
+                    els.btnDoActiveRecall.classList.remove('hidden');
+                    playErgonomicChime('end');
+                }
+            }, 1000);
+        }
+
+        function unlockAfter202020Break() {
+            if (state.breakSecondsRemaining > 0) return;
+            els.modal202020.classList.add('hidden');
+            state.isBreakActive = false;
+            state.readingSecondsRemaining = 20 * 60;
+            if (state.isOcularTimerEnabled) {
+                start202020BackgroundTimer();
+            } else {
+                updateTimerDisplay();
+            }
+        }
+
+        function applyErgonomicSettings() {
+            const root = document.documentElement;
+            root.style.setProperty('--reader-font', els.selectFont.value);
+            root.style.setProperty('--reader-size', els.selectSize.value);
+            root.style.setProperty('--reader-measure', els.selectMeasure.value);
+
+            if (state.mode === 'reading') {
+                computeStaticPages();
+                renderCurrentStaticPage();
+            }
+        }
+
+        function setSurfacePolarity(surfaceType) {
+            if (surfaceType === 'grey') {
+                document.body.classList.add('surface-warm-grey');
+                els.btnSurfaceGrey.style.backgroundColor = 'var(--accent-soft)';
+                els.btnSurfaceGrey.style.color = 'var(--text-primary)';
+                els.btnSurfaceCream.style.backgroundColor = 'transparent';
+                els.btnSurfaceCream.style.color = 'var(--text-muted)';
+            } else {
+                document.body.classList.remove('surface-warm-grey');
+                els.btnSurfaceCream.style.backgroundColor = 'var(--accent-soft)';
+                els.btnSurfaceCream.style.color = 'var(--text-primary)';
+                els.btnSurfaceGrey.style.backgroundColor = 'transparent';
+                els.btnSurfaceGrey.style.color = 'var(--text-muted)';
+            }
+            if (state.mode === 'reading') {
+                renderCurrentStaticPage();
+            }
+        }
+
+        function initEventListeners() {
+            els.btnConfirmPosture.addEventListener('click', () => {
+                els.postureModal.classList.add('hidden');
+            });
+            els.btnReopenPosture.addEventListener('click', () => {
+                els.postureModal.classList.remove('hidden');
+            });
+
+            els.btnLayoutSingle.addEventListener('click', () => setDoublePageMode(false, true));
+            els.btnLayoutDouble.addEventListener('click', () => setDoublePageMode(true, true));
+            els.btnQuickSinglePage.addEventListener('click', () => setDoublePageMode(false, true));
+            els.btnCollapseSidebar.addEventListener('click', () => setSidebarCollapsed(true));
+            els.btnExpandSidebar.addEventListener('click', () => setSidebarCollapsed(false));
+
+            els.btnSurfaceCream.addEventListener('click', () => setSurfacePolarity('cream'));
+            els.btnSurfaceGrey.addEventListener('click', () => setSurfacePolarity('grey'));
+
+            els.selectFont.addEventListener('change', applyErgonomicSettings);
+            els.selectSize.addEventListener('change', applyErgonomicSettings);
+            els.selectMeasure.addEventListener('change', applyErgonomicSettings);
+
+            els.selectBeeline.addEventListener('change', (e) => {
+                state.beeline = e.target.value;
+                if (state.mode === 'reading') {
+                    renderCurrentStaticPage();
+                }
+            });
+
+            els.rangePaperTexture.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value, 10) || 0;
+                const opacityMap = { 0: 0, 50: 0.25, 100: 0.50 };
+                const opacity = opacityMap[val] ?? 0;
+                document.documentElement.style.setProperty('--paper-texture-opacity', opacity.toFixed(2));
+                if (val > 0) {
+                    document.body.classList.add('paper-texture-active');
+                    els.paperTextureValue.textContent = `${val}%`;
+                } else {
+                    document.body.classList.remove('paper-texture-active');
+                    els.paperTextureValue.textContent = 'Desligado';
+                }
+            });
+
+            els.btnImportPdf.addEventListener('click', () => els.inputPdfFile.click());
+            els.inputPdfFile.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    handlePdfUpload(e.target.files[0]);
+                }
+            });
+
+            els.inputRawText.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                els.inputRawText.style.borderColor = 'var(--accent-color)';
+            });
+            els.inputRawText.addEventListener('dragleave', () => {
+                els.inputRawText.style.borderColor = 'var(--border-color)';
+            });
+            els.inputRawText.addEventListener('drop', (e) => {
+                e.preventDefault();
+                els.inputRawText.style.borderColor = 'var(--border-color)';
+                const file = e.dataTransfer?.files?.[0];
+                if (file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))) {
+                    handlePdfUpload(file);
+                }
+            });
+
+            els.inputRawText.addEventListener('input', () => {
+                state.currentSavedTextId = null;
+                state.highlights = {};
+                state.comments = {};
+                state.activeRecalls = [];
+                updateEditorStats();
+            });
+            els.inputDocTitle.addEventListener('input', () => {
+                state.currentSavedTextId = null;
+            });
+
+            els.btnSaveText.addEventListener('click', () => saveCurrentText(false));
+            els.btnExportBackup.addEventListener('click', exportBackupJson);
+            els.btnImportBackup.addEventListener('click', () => els.inputImportBackup.click());
+            els.inputImportBackup.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    importBackupJson(e.target.files[0]);
+                }
+            });
+
+            els.btnLoadSample.addEventListener('click', () => {
+                els.inputDocTitle.value = SAMPLE_STUDY_TITLE;
+                els.inputRawText.value = SAMPLE_STUDY_TEXT;
+                state.currentSavedTextId = null;
+                state.highlights = {};
+                state.comments = {};
+                state.activeRecalls = [];
+                updateEditorStats();
+            });
+            els.btnClearText.addEventListener('click', () => {
+                els.inputDocTitle.value = '';
+                els.inputRawText.value = '';
+                state.currentSavedTextId = null;
+                state.highlights = {};
+                state.comments = {};
+                state.activeRecalls = [];
+                updateEditorStats();
+                els.inputRawText.focus();
+            });
+
+            els.btnStartReading.addEventListener('click', () => startReadingSession());
+            els.btnBackToEditor.addEventListener('click', returnToEditor);
+
+            els.btnNextBlock.addEventListener('click', nextLogicalBlock);
+            els.btnPrevBlock.addEventListener('click', prevLogicalBlock);
+            els.btnNextPage.addEventListener('click', () => goToPage(state.currentPageIndex + (isEffectiveDoublePage() ? 2 : 1), 0));
+            els.btnPrevPage.addEventListener('click', () => goToPage(state.currentPageIndex - (isEffectiveDoublePage() ? 2 : 1), 0));
+
+            els.toggleFullPageOpacity.addEventListener('change', (e) => {
+                state.fullPageIlluminated = e.target.checked;
+                if (state.fullPageIlluminated) {
+                    els.staticPageFrame.classList.add('all-paragraphs-visible');
+                } else {
+                    els.staticPageFrame.classList.remove('all-paragraphs-visible');
+                }
+            });
+
+            els.btnToggle202020.addEventListener('click', toggleOcularTimer);
+            els.btnReset202020.addEventListener('click', resetOcularTimer);
+            els.btnTest202020.addEventListener('click', trigger202020BreakLock);
+            els.btnUnlockReading.addEventListener('click', unlockAfter202020Break);
+
+            // Ouvintes da Recuperação Ativa
+            els.btnDoActiveRecall.addEventListener('click', openActiveRecallWriter);
+            els.btnCancelActiveRecall.addEventListener('click', () => {
+                els.modalActiveRecallWriter.classList.add('hidden');
+                unlockAfter202020Break();
+            });
+            els.btnSaveActiveRecall.addEventListener('click', saveActiveRecallAndResume);
+            
+            els.btnViewActiveRecalls.addEventListener('click', () => {
+                renderActiveRecallList();
+                els.modalActiveRecallList.classList.remove('hidden');
+            });
+            els.btnCloseActiveRecallList.addEventListener('click', () => {
+                els.modalActiveRecallList.classList.add('hidden');
+            });
+            els.modalActiveRecallList.addEventListener('mousedown', (e) => {
+                if (e.target === els.modalActiveRecallList) els.modalActiveRecallList.classList.add('hidden');
+            });
+
+            els.btnViewAllComments.addEventListener('click', () => {
+                renderAllCommentsModal();
+                els.modalAllComments.classList.remove('hidden');
+            });
+            els.btnCloseAllComments.addEventListener('click', () => {
+                els.modalAllComments.classList.add('hidden');
+            });
+            els.modalAllComments.addEventListener('mousedown', (e) => {
+                if (e.target === els.modalAllComments) els.modalAllComments.classList.add('hidden');
+            });
+            els.btnReturnOriginalPage.addEventListener('click', returnToOriginalPage);
+
+            document.querySelectorAll('[data-hl-action]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    applyHighlightColor(btn.getAttribute('data-hl-action'));
+                });
+            });
+            els.btnRemoveHighlight.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeSelectedHighlight();
+            });
+            els.btnToolbarComment.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const targetIdx = state.pendingSelection?.[0]?.globalIndex
+                    ?? state.activeMarkTarget?.globalIndex
+                    ?? getActiveSpreadBlocks()[state.focusedBlockIndex]?.globalIndex;
+                hideHighlightToolbar();
+                window.getSelection()?.removeAllRanges();
+                if (targetIdx !== undefined) {
+                    openCommentEditorForGlobalIndex(targetIdx);
+                }
+            });
+
+            document.addEventListener('mouseup', (e) => {
+                if (e.target.closest('#highlight-toolbar') || e.target.closest('#comment-floating-popover')) return;
+                setTimeout(handleTextSelectionEnd, 10);
+            });
+            document.addEventListener('touchend', (e) => {
+                if (e.target.closest('#highlight-toolbar') || e.target.closest('#comment-floating-popover')) return;
+                setTimeout(handleTextSelectionEnd, 40);
+            });
+            document.addEventListener('mousedown', (e) => {
+                if (!e.target.closest('#highlight-toolbar') && !(e.target.tagName === 'MARK' && e.target.classList.contains('ergo-highlight'))) {
+                    hideHighlightToolbar();
+                }
+                if (!e.target.closest('#comment-floating-popover') && !e.target.closest('.ergo-comment-anchor') && !e.target.closest('#btn-toolbar-comment')) {
+                    closeCommentPopover();
+                }
+            });
+
+            // Gestos de toque (Swipe) em celulares e tablets
+            let touchStartX = 0;
+            let touchStartY = 0;
+            els.staticPageFrame.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) return;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }, { passive: true });
+
+            els.staticPageFrame.addEventListener('touchend', (e) => {
+                if (state.mode !== 'reading' || state.isBreakActive) return;
+                if (!window.getSelection()?.isCollapsed) return;
+                if (!e.changedTouches || e.changedTouches.length !== 1) return;
+
+                const dx = e.changedTouches[0].clientX - touchStartX;
+                const dy = e.changedTouches[0].clientY - touchStartY;
+                const step = isEffectiveDoublePage() ? 2 : 1;
+
+                if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+                    if (dx < 0) goToPage(state.currentPageIndex + step, 0);
+                    else goToPage(state.currentPageIndex - step, 0);
+                } else if (Math.abs(dy) > 55 && Math.abs(dy) > Math.abs(dx) * 1.4) {
+                    if (dy < 0) nextLogicalBlock();
+                    else prevLogicalBlock();
+                }
+            }, { passive: true });
+
+            window.addEventListener('keydown', (e) => {
+                if (state.mode !== 'reading' || state.isBreakActive) return;
+                if (!els.postureModal.classList.contains('hidden')) return;
+                const activeTag = document.activeElement?.tagName;
+                if (activeTag === 'TEXTAREA' || activeTag === 'INPUT' || activeTag === 'SELECT') return;
+
+                const step = isEffectiveDoublePage() ? 2 : 1;
+                if (e.code === 'Space' || e.code === 'ArrowDown') {
+                    e.preventDefault();
+                    nextLogicalBlock();
+                } else if (e.code === 'ArrowUp') {
+                    e.preventDefault();
+                    prevLogicalBlock();
+                } else if (e.code === 'ArrowRight' || e.code === 'PageDown') {
+                    e.preventDefault();
+                    goToPage(state.currentPageIndex + step, 0);
+                } else if (e.code === 'ArrowLeft' || e.code === 'PageUp') {
+                    e.preventDefault();
+                    goToPage(state.currentPageIndex - step, 0);
+                }
+            });
+
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                if (state.mode !== 'reading') return;
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    const rect = els.pageViewportBox.getBoundingClientRect();
+                    if (
+                        Math.abs(rect.width - state.lastViewportWidth) > 6 ||
+                        Math.abs(rect.height - state.lastViewportHeight) > 6
+                    ) {
+                        closeCommentPopover();
+                        computeStaticPages();
+                        renderCurrentStaticPage();
+                    }
+                }, 120);
+            });
+        }
+
+        function bootstrapApp() {
+            if (window.__kognosInitialized) return;
+            window.__kognosInitialized = true;
+            bindElements();
+            els.inputDocTitle.value = SAMPLE_STUDY_TITLE;
+            els.inputRawText.value = SAMPLE_STUDY_TEXT;
+            setSurfacePolarity('grey');
+            setDoublePageMode(true, false);
+            applyErgonomicSettings();
+            updateTimerDisplay();
+            updateOcularTimerControlsUI();
+            updateEditorStats();
+            renderSavedTexts();
+            initEventListeners();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootstrapApp);
+        } else {
+            bootstrapApp();
+        }
+    </script>
+
+</body>
+</html>
