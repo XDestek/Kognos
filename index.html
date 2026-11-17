@@ -24,16 +24,16 @@
 
     <style>
         :root {
-            --bg-primary: #F4F1EA;
-            --bg-secondary: #EAE6DF;
-            --bg-surface: #E4DFD5;
-            --text-primary: #1E1E1E;
+            --bg-primary: #EAE6DF;
+            --bg-secondary: #DFDBD2;
+            --bg-surface: #D6D1C7;
+            --text-primary: #252525;
             --text-secondary: #252525;
             --text-muted: #5A5751;
-            --border-color: #D2CCC0;
+            --border-color: #C5BFB3;
             --accent-color: #3D5A45;
             --accent-soft: #C8D3CA;
-            --modal-backdrop: rgba(234, 230, 223, 0.96);
+            --modal-backdrop: rgba(223, 219, 210, 0.96);
             
             /* Variáveis dinâmicas de leitura (Padrão confortável) */
             --reader-font: 'Atkinson Hyperlegible', sans-serif;
@@ -45,7 +45,7 @@
             --paper-texture-opacity: 0.25;
         }
 
-        /* Tema Cinza-Claro (#EAE6DF) alternativo */
+        /* Tema Cinza Quente (#EAE6DF) padrão */
         body.surface-warm-grey {
             --bg-primary: #EAE6DF;
             --bg-secondary: #DFDBD2;
@@ -242,10 +242,15 @@
             border-radius: 0.5rem;
         }
 
-        /* Ancoragem Biônica (Foco de Fixação Inicial para TDAH) e destaque de leitura em voz alta */
+        /* Ancoragem Biônica Sutil (Foco de Fixação Inicial para TDAH) e destaque de leitura em voz alta */
         b.bionic-anchor {
-            font-weight: 700;
-            color: inherit;
+            font-weight: 600;
+            color: color-mix(in srgb, currentColor 84%, var(--bg-primary));
+        }
+
+        span.bionic-rest {
+            font-weight: 400;
+            opacity: 0.9;
         }
 
         .ergo-paragraph.is-tts-speaking {
@@ -715,38 +720,33 @@
     <!-- ======================================================================= -->
     <!-- 2. TELA INICIAL: INSERÇÃO E PREPARAÇÃO DO MATERIAL DE ESTUDO            -->
     <!-- ======================================================================= -->
-    <main id="editor-view" class="flex-1 flex flex-col items-center justify-center p-4 md:p-6 max-w-4xl mx-auto w-full">
+    <main id="editor-view" class="flex-1 flex flex-col items-center justify-center p-4 pt-14 md:p-6 md:pr-20 max-w-4xl mx-auto w-full relative">
         
-        <!-- Cabeçalho de Identidade Inicial -->
-        <div class="flex items-center justify-between gap-3 mb-6 w-full px-2">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg" style="background-color: var(--accent-color); color: #F4F1EA;">K</div>
-                <div>
-                    <h1 class="text-xl md:text-2xl font-bold tracking-tight" style="color: var(--text-primary);">Kognos ErgoReader</h1>
-                    <p class="text-xs md:text-sm mt-0.5" style="color: var(--text-muted);">Preparação do Material de Estudo</p>
-                </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-                <button id="btn-editor-amber-mode" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 shadow-sm" title="Modo Noturno Âmbar / Sépia Quente (Zero luz azul e sem efeito halo para Astigmatismo)">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                    <span id="label-editor-amber-mode">Âmbar Noturno</span>
+        <!-- Controles Rápidos Lateralizados na Página Inicial (Tema Unificado e Tela Cheia) -->
+        <div id="editor-lateral-controls" class="fixed top-2 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:top-6 md:right-4 z-40 flex flex-row md:flex-col items-center md:items-end gap-1.5 sm:gap-2 max-w-[calc(100vw-1rem)] px-1.5 py-1 md:p-0 rounded-2xl">
+            <div class="ergo-card p-1 rounded-xl shadow-md flex flex-row md:flex-col gap-1 border" style="background-color: var(--bg-secondary); border-color: var(--border-color);" title="Superfície Visual Unificada: Cinza Quente, Âmbar Noturno (S/ Halo) ou Modo Escuro">
+                <button type="button" data-surface-choice="grey" class="surface-mode-btn ergo-btn-primary w-8 h-8 md:w-9 md:h-9 rounded-lg text-[10px] font-bold flex items-center justify-center transition-colors" title="Fundo Cinza Quente (Padrão Oftalmológico)">
+                    <span class="w-4 h-4 rounded-full border border-stone-500" style="background-color: #EAE6DF;"></span>
                 </button>
-                <button id="btn-editor-dark-mode" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 shadow-sm" title="Alternar Modo Escuro (Não indicado para Astigmatismo)">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-                    <span id="label-editor-dark-mode">Modo Escuro</span>
+                <button type="button" data-surface-choice="amber" class="surface-mode-btn ergo-btn-secondary w-8 h-8 md:w-9 md:h-9 rounded-lg text-[10px] font-bold flex items-center justify-center transition-colors" title="Modo Âmbar Noturno (Zero luz azul e sem efeito halo para Astigmatismo)">
+                    <span class="w-4 h-4 rounded-full border border-amber-700" style="background-color: #E6D2B5;"></span>
+                </button>
+                <button type="button" data-surface-choice="dark" class="surface-mode-btn ergo-btn-secondary w-8 h-8 md:w-9 md:h-9 rounded-lg text-[10px] font-bold flex items-center justify-center transition-colors" title="Modo Escuro (Não indicado para Astigmatismo)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
                 </button>
             </div>
+            <button id="btn-editor-fullscreen" type="button" class="ergo-btn-secondary w-9 h-9 md:w-11 md:h-11 shrink-0 rounded-xl text-xs font-medium shadow-md flex items-center justify-center transition-colors" title="Alternar Tela Cheia">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+            </button>
         </div>
 
         <div class="ergo-card w-full rounded-2xl p-5 md:p-7 shadow-sm">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
-                <div>
-                    <h2 class="text-lg font-semibold tracking-tight" style="color: var(--text-primary);">
-                        Inserção de Texto Focal
-                    </h2>
-                    <p class="text-xs mt-1" style="color: var(--text-muted);">
-                        O texto será segmentado automaticamente em páginas fixas (sem rolagem).
-                    </p>
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shrink-0" style="background-color: var(--accent-color); color: #F4F1EA;">K</div>
+                    <h1 class="text-xl md:text-2xl font-bold tracking-tight" style="color: var(--text-primary);">
+                        Kognos ErgoReader
+                    </h1>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 shrink-0">
                     <input id="input-pdf-file" type="file" accept="application/pdf,.pdf,application/epub+zip,.epub,text/plain,.txt,.md" class="hidden" />
@@ -1056,36 +1056,29 @@
                     <div class="ergo-switch-track"><div class="ergo-switch-thumb"></div></div>
                 </button>
 
-                <!-- 2. Superfície Creme / Cinza (Switch On/Off) -->
-                <button id="btn-toggle-surface" type="button" class="ergo-switch-btn is-on shadow-sm" title="Alternar cor de fundo entre Cinza e Creme">
-                    <div class="flex items-center gap-2 text-xs font-medium">
-                        <span id="surface-swatch-dot" class="w-4 h-4 rounded-full border border-stone-500 shrink-0" style="background-color: #EAE6DF;"></span>
-                        <span id="label-surface-color" class="text-[11px]">Creme / Cinza</span>
+                <!-- 2. Seletor Unificado de Superfície (Cinza Quente | Âmbar Noturno | Modo Escuro) -->
+                <div class="flex flex-col gap-1.5 p-2 rounded-xl border shadow-sm" style="background-color: var(--bg-primary); border-color: var(--border-color);">
+                    <div class="flex items-center justify-between px-0.5">
+                        <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Cor de Fundo</span>
+                        <span id="label-surface-color" class="text-[10px] font-semibold" style="color: var(--accent-color);">Cinza Quente</span>
                     </div>
-                    <div class="ergo-switch-track"><div class="ergo-switch-thumb"></div></div>
-                </button>
-
-                <!-- 2a. Modo Noturno Âmbar / Sépia Quente (Sem Efeito Halo para Astigmatismo) -->
-                <button id="btn-toggle-amber-mode" type="button" class="ergo-switch-btn shadow-sm" title="Modo Noturno Âmbar / Sépia Quente: Zero luz azul mantendo letras escuras (Ideal para quem tem Astigmatismo ler à noite sem efeito halo)">
-                    <div class="flex items-center gap-2 text-xs font-medium">
-                        <span class="w-4 h-4 rounded-full border border-amber-700 shrink-0" style="background-color: #E6D2B5;"></span>
-                        <span class="text-[11px]">Âmbar Noturno (S/ Halo)</span>
-                    </div>
-                    <div class="ergo-switch-track"><div class="ergo-switch-thumb"></div></div>
-                </button>
-
-                <!-- 2b. Modo Escuro (Switch On/Off + Alerta para Astigmatismo) -->
-                <div class="flex flex-col gap-1">
-                    <button id="btn-toggle-dark-mode" type="button" class="ergo-switch-btn shadow-sm" title="Ativar ou desativar Modo Escuro (Não indicado para Astigmatismo)">
-                        <div class="flex items-center gap-2 text-xs font-medium">
-                            <svg class="w-4 h-4 shrink-0" style="color: var(--accent-color);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div class="grid grid-cols-3 gap-1 p-0.5 rounded-lg border" style="background-color: var(--bg-secondary); border-color: var(--border-color);">
+                        <button type="button" data-surface-choice="grey" class="surface-mode-btn ergo-btn-primary py-1.5 px-1.5 rounded-md text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors" title="Cinza Quente (Padrão Oftalmológico)">
+                            <span class="w-2.5 h-2.5 rounded-full border border-stone-500 shrink-0" style="background-color: #EAE6DF;"></span>
+                            <span>Cinza</span>
+                        </button>
+                        <button type="button" data-surface-choice="amber" class="surface-mode-btn ergo-btn-secondary py-1.5 px-1.5 rounded-md text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors" title="Âmbar Noturno (Zero luz azul e sem efeito halo para Astigmatismo)">
+                            <span class="w-2.5 h-2.5 rounded-full border border-amber-700 shrink-0" style="background-color: #E6D2B5;"></span>
+                            <span>Âmbar</span>
+                        </button>
+                        <button type="button" data-surface-choice="dark" class="surface-mode-btn ergo-btn-secondary py-1.5 px-1.5 rounded-md text-[10px] font-semibold flex items-center justify-center gap-1 transition-colors" title="Modo Escuro (Não indicado para Astigmatismo)">
+                            <svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
                             </svg>
-                            <span class="text-[11px]">Modo Escuro</span>
-                        </div>
-                        <div class="ergo-switch-track"><div class="ergo-switch-thumb"></div></div>
-                    </button>
-                    <div id="dark-mode-astigmatism-note" class="hidden px-2.5 py-1.5 rounded-lg text-[10px] leading-snug border flex items-start gap-1.5" style="background-color: rgba(217, 119, 6, 0.14); border-color: rgba(217, 119, 6, 0.45); color: #F59E0B;">
+                            <span>Escuro</span>
+                        </button>
+                    </div>
+                    <div id="dark-mode-astigmatism-note" class="hidden px-2 py-1 rounded-lg text-[10px] leading-snug border flex items-start gap-1.5" style="background-color: rgba(217, 119, 6, 0.14); border-color: rgba(217, 119, 6, 0.45); color: #F59E0B;">
                         <span class="shrink-0 font-bold">⚠️</span>
                         <span>Não indicado para quem tem <strong>Astigmatismo</strong> (pode gerar efeito halo e fadiga visual).</span>
                     </div>
@@ -1419,7 +1412,7 @@
             </p>
 
             <div class="p-3 rounded-xl border text-xs mb-5" style="background-color: var(--bg-primary); border-color: var(--border-color); color: var(--text-muted);">
-                <strong style="color: var(--text-primary);">Recomendação:</strong> Se você possui astigmatismo ou sente as letras "borradas/duplicadas" no escuro, prefira os fundos claros atenuados (<strong>Cinza Quente</strong> ou <strong>Creme</strong>).
+                <strong style="color: var(--text-primary);">Recomendação:</strong> Se você possui astigmatismo ou sente as letras "borradas/duplicadas" no escuro, prefira os fundos de polaridade positiva (<strong>Cinza Quente</strong> ou <strong>Âmbar Noturno</strong>).
             </div>
 
             <div class="flex flex-col sm:flex-row gap-2.5">
@@ -1652,14 +1645,11 @@
                 btnCollapseSidebar: 'btn-collapse-sidebar', btnExpandSidebar: 'btn-expand-sidebar', btnQuickSinglePage: 'btn-quick-single-page',
                 btnQuickToc: 'btn-quick-toc', btnQuickSearch: 'btn-quick-search', btnQuickTts: 'btn-quick-tts',
                 btnQuickFullscreen: 'btn-quick-fullscreen', btnQuickIlluminate: 'btn-quick-illuminate', btnQuickExit: 'btn-quick-exit',
-                btnSidebarFullscreen: 'btn-sidebar-fullscreen',
+                btnSidebarFullscreen: 'btn-sidebar-fullscreen', btnEditorFullscreen: 'btn-editor-fullscreen',
                 collapsedSidebarControls: 'collapsed-sidebar-controls', readerSidebar: 'reader-sidebar',
                 sidebarMobileBackdrop: 'sidebar-mobile-backdrop',
                 staticPageFrame: 'static-page-frame', bookSpineDivider: 'book-spine-divider',
-                btnToggleSurface: 'btn-toggle-surface', surfaceSwatchDot: 'surface-swatch-dot', labelSurfaceColor: 'label-surface-color',
-                btnToggleAmberMode: 'btn-toggle-amber-mode', btnEditorAmberMode: 'btn-editor-amber-mode', labelEditorAmberMode: 'label-editor-amber-mode',
-                btnToggleDarkMode: 'btn-toggle-dark-mode', darkModeAstigmatismNote: 'dark-mode-astigmatism-note',
-                btnEditorDarkMode: 'btn-editor-dark-mode', labelEditorDarkMode: 'label-editor-dark-mode',
+                labelSurfaceColor: 'label-surface-color', darkModeAstigmatismNote: 'dark-mode-astigmatism-note',
                 modalDarkModeWarning: 'modal-dark-mode-warning', btnCancelDarkMode: 'btn-cancel-dark-mode', btnConfirmDarkMode: 'btn-confirm-dark-mode',
                 btnToggleBeeline: 'btn-toggle-beeline', btnToggleBionic: 'btn-toggle-bionic', btnToggleTexture: 'btn-toggle-texture',
                 btnToggleTts: 'btn-toggle-tts', labelTtsStatus: 'label-tts-status', selectTtsRate: 'select-tts-rate',
@@ -1954,12 +1944,21 @@
         }
 
         function formatBionicWordNode(wordStr) {
-            // Preserva pontuação inicial e destaca 40%–50% das letras iniciais da palavra
+            // Preserva pontuação inicial e destaca sutilmente apenas ~33% das letras iniciais
             const match = wordStr.match(/^([^A-Za-zÀ-ÖØ-öø-ÿ0-9]*)([A-Za-zÀ-ÖØ-öø-ÿ0-9]+)([\s\S]*)$/);
             if (!match) return document.createTextNode(wordStr);
             const [, prefix, core, suffix] = match;
             const len = core.length;
-            const boldLen = len <= 3 ? 1 : (len <= 6 ? 2 : Math.ceil(len * 0.45));
+
+            // Palavras muito curtas (1 ou 2 letras) permanecem suaves para não sobrecarregar a linha
+            if (len <= 2) {
+                const spanShort = document.createElement('span');
+                spanShort.className = 'bionic-rest';
+                spanShort.textContent = wordStr;
+                return spanShort;
+            }
+
+            const boldLen = len <= 4 ? 1 : (len <= 8 ? 2 : Math.ceil(len * 0.33));
 
             const frag = document.createDocumentFragment();
             if (prefix) frag.appendChild(document.createTextNode(prefix));
@@ -1968,7 +1967,10 @@
             bEl.textContent = core.slice(0, boldLen);
             frag.appendChild(bEl);
             if (boldLen < len || suffix) {
-                frag.appendChild(document.createTextNode(core.slice(boldLen) + suffix));
+                const restEl = document.createElement('span');
+                restEl.className = 'bionic-rest';
+                restEl.textContent = core.slice(boldLen) + suffix;
+                frag.appendChild(restEl);
             }
             return frag;
         }
@@ -6425,40 +6427,29 @@
         }
 
         function setSurfacePolarity(surfaceType, showAstigmatismAlert = false) {
-            state.surfaceType = surfaceType;
-            const isDark = surfaceType === 'dark';
-            const isAmber = surfaceType === 'amber';
-            const isGrey = surfaceType === 'grey';
-            if (!isDark && !isAmber) state.lastLightSurface = surfaceType;
+            const validType = (surfaceType === 'dark' || surfaceType === 'amber') ? surfaceType : 'grey';
+            state.surfaceType = validType;
+            const isDark = validType === 'dark';
+            const isAmber = validType === 'amber';
+            const isGrey = validType === 'grey';
+            if (!isDark) state.lastLightSurface = validType;
 
             document.body.classList.toggle('surface-dark', isDark);
             document.body.classList.toggle('surface-amber', isAmber);
             document.body.classList.toggle('surface-warm-grey', isGrey);
 
-            els.btnToggleDarkMode?.classList.toggle('is-on', isDark);
-            els.btnToggleAmberMode?.classList.toggle('is-on', isAmber);
             els.darkModeAstigmatismNote?.classList.toggle('hidden', !isDark);
 
-            if (els.btnEditorDarkMode && els.labelEditorDarkMode) {
-                els.btnEditorDarkMode.classList.toggle('ergo-btn-primary', isDark);
-                els.btnEditorDarkMode.classList.toggle('ergo-btn-secondary', !isDark);
-                els.labelEditorDarkMode.textContent = isDark ? 'Modo Escuro: Ativo' : 'Modo Escuro';
-            }
+            document.querySelectorAll('.surface-mode-btn').forEach(btn => {
+                const active = btn.dataset.surfaceChoice === validType;
+                btn.classList.toggle('ergo-btn-primary', active);
+                btn.classList.toggle('ergo-btn-secondary', !active);
+            });
 
-            if (els.btnEditorAmberMode && els.labelEditorAmberMode) {
-                els.btnEditorAmberMode.classList.toggle('ergo-btn-primary', isAmber);
-                els.btnEditorAmberMode.classList.toggle('ergo-btn-secondary', !isAmber);
-                els.labelEditorAmberMode.textContent = isAmber ? 'Âmbar Noturno: Ativo' : 'Âmbar Noturno';
-            }
-
-            els.btnToggleSurface?.classList.toggle('is-on', !isDark && !isAmber && isGrey);
-            if (els.surfaceSwatchDot) {
-                els.surfaceSwatchDot.style.backgroundColor = isDark ? '#181A1C' : (isAmber ? '#E6D2B5' : (isGrey ? '#EAE6DF' : '#F4F1EA'));
-            }
             if (els.labelSurfaceColor) {
-                els.labelSurfaceColor.textContent = (isDark || isAmber)
-                    ? 'Creme / Cinza (Off)'
-                    : (isGrey ? 'Creme / Cinza (Cinza)' : 'Creme / Cinza (Creme)');
+                els.labelSurfaceColor.textContent = isDark
+                    ? 'Modo Escuro'
+                    : (isAmber ? 'Âmbar (S/ Halo)' : 'Cinza Quente');
             }
 
             if (showAstigmatismAlert && isDark) {
@@ -6500,47 +6491,15 @@
             els.btnQuickSinglePage.onclick = () => setDoublePageMode(!state.doublePage, true);
             els.btnQuickFullscreen.onclick = toggleFullscreen;
             els.btnSidebarFullscreen.onclick = toggleFullscreen;
+            if (els.btnEditorFullscreen) els.btnEditorFullscreen.onclick = toggleFullscreen;
             els.btnQuickIlluminate.onclick = () => setFullPageIllumination(!state.fullPageIlluminated);
 
-            els.btnToggleSurface.onclick = () => {
-                if (state.surfaceType === 'dark' || state.surfaceType === 'amber') {
-                    setSurfacePolarity(state.lastLightSurface || 'grey', false);
-                } else {
-                    setSurfacePolarity(state.surfaceType === 'grey' ? 'cream' : 'grey', false);
-                }
-            };
-            if (els.btnToggleAmberMode) {
-                els.btnToggleAmberMode.onclick = () => {
-                    if (state.surfaceType === 'amber') {
-                        setSurfacePolarity(state.lastLightSurface || 'grey', false);
-                    } else {
-                        setSurfacePolarity('amber', false);
-                    }
+            document.querySelectorAll('.surface-mode-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const targetSurface = btn.dataset.surfaceChoice || 'grey';
+                    setSurfacePolarity(targetSurface, targetSurface === 'dark' && state.surfaceType !== 'dark');
                 };
-            }
-            if (els.btnEditorAmberMode) {
-                els.btnEditorAmberMode.onclick = () => {
-                    if (state.surfaceType === 'amber') {
-                        setSurfacePolarity(state.lastLightSurface || 'grey', false);
-                    } else {
-                        setSurfacePolarity('amber', false);
-                    }
-                };
-            }
-            els.btnToggleDarkMode.onclick = () => {
-                if (state.surfaceType === 'dark') {
-                    setSurfacePolarity(state.lastLightSurface || 'grey', false);
-                } else {
-                    setSurfacePolarity('dark', true);
-                }
-            };
-            els.btnEditorDarkMode.onclick = () => {
-                if (state.surfaceType === 'dark') {
-                    setSurfacePolarity(state.lastLightSurface || 'grey', false);
-                } else {
-                    setSurfacePolarity('dark', true);
-                }
-            };
+            });
             els.btnCancelDarkMode.onclick = () => {
                 els.modalDarkModeWarning.classList.add('hidden');
                 setSurfacePolarity(state.lastLightSurface || 'grey', false);
@@ -6891,7 +6850,7 @@
                 if (prefs.font && els.selectFont) els.selectFont.value = prefs.font;
                 if (prefs.size && els.selectSize) els.selectSize.value = prefs.size;
                 if (prefs.measure && els.selectMeasure) els.selectMeasure.value = prefs.measure;
-                if (prefs.lastLightSurface) state.lastLightSurface = prefs.lastLightSurface;
+                if (prefs.lastLightSurface && prefs.lastLightSurface !== 'cream') state.lastLightSurface = prefs.lastLightSurface;
                 if (prefs.noiseMode) state.noiseMode = prefs.noiseMode === '144hz' ? '144hz' : 'brown';
                 if (typeof prefs.isOcularTimerEnabled === 'boolean') state.isOcularTimerEnabled = prefs.isOcularTimerEnabled;
                 if (typeof prefs.ttsRate === 'number' && els.selectTtsRate) {
@@ -6900,7 +6859,7 @@
                 }
             }
 
-            setSurfacePolarity(prefs?.surfaceType || 'grey', false);
+            setSurfacePolarity((prefs?.surfaceType && prefs.surfaceType !== 'cream') ? prefs.surfaceType : 'grey', false);
             setDoublePageMode(typeof prefs?.doublePage === 'boolean' ? prefs.doublePage : true, false);
             setBeelineEnabled(prefs?.beeline ? prefs.beeline !== 'off' : true);
             setBionicReadingEnabled(Boolean(prefs?.bionicReading));
