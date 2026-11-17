@@ -578,6 +578,10 @@
             
             <!-- Botões Flutuantes quando a Barra de Opções está Recolhida -->
             <div id="collapsed-sidebar-controls" class="hidden fixed top-4 right-4 z-40 flex items-center gap-2">
+                <button id="btn-quick-fullscreen" type="button" class="ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium shadow-md flex items-center gap-1.5" title="Alternar Tela Cheia">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                    <span class="hidden sm:inline">Tela Cheia</span>
+                </button>
                 <button id="btn-quick-single-page" type="button" class="hidden ergo-btn-secondary px-3 py-2 rounded-xl text-xs font-medium shadow-md flex items-center gap-1.5" title="Voltar para visualização de 1 página">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     <span>1 Página</span>
@@ -640,6 +644,9 @@
                     <button id="btn-back-to-editor" class="text-xs font-medium underline cursor-pointer hover:opacity-80" style="color: var(--text-muted);">
                         Sair da Leitura
                     </button>
+                    <button id="btn-sidebar-fullscreen" type="button" class="ergo-btn-secondary p-1.5 rounded-lg" title="Alternar Tela Cheia">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                    </button>
                     <button id="btn-collapse-sidebar" type="button" class="ergo-btn-secondary p-1.5 rounded-lg" title="Recolher barra de opções">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
                     </button>
@@ -648,6 +655,18 @@
 
             <!-- Foco e Timer -->
             <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between border-b pb-2 mb-1" style="border-color: var(--border-color);">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Áudio Foco</span>
+                    <button id="btn-toggle-brown-noise" type="button" class="ergo-btn-secondary px-2.5 py-1.5 rounded-lg text-[11px] font-medium flex items-center gap-1.5 transition-colors" title="Ligar/Desligar Ruído Marrom">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5 10v4a2 2 0 002 2h2l4 4V4L9 8H7a2 2 0 00-2 2z"/></svg>
+                        Ruído Marrom
+                        <div id="brown-noise-bars" class="hidden flex items-end gap-[2px] h-3.5 ml-1">
+                            <div class="w-[3px] bg-current rounded-full sound-bar-1"></div>
+                            <div class="w-[3px] bg-current rounded-full sound-bar-2"></div>
+                            <div class="w-[3px] bg-current rounded-full sound-bar-3"></div>
+                        </div>
+                    </button>
+                </div>
                 <div class="flex items-center justify-between">
                     <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-muted);">Timer de descanso ocular</span>
                     <button id="btn-reset-202020" type="button" class="text-[10px] font-medium underline cursor-pointer hover:opacity-80" style="color: var(--text-muted);" title="Reiniciar contagem para 20 minutos">Reiniciar</button>
@@ -943,7 +962,11 @@ Ao substituir a rolagem contínua pela paginação estática combinada ao isolam
             readingTimerInterval: null,
             isBreakActive: false,
             breakSecondsRemaining: 20,
-            breakTimerInterval: null
+            breakTimerInterval: null,
+            
+            isBrownNoisePlaying: false,
+            audioCtx: null,
+            brownNoiseNode: null
         };
 
         let els = {};
@@ -959,6 +982,8 @@ Ao substituir a rolagem contínua pela paginação estática combinada ao isolam
                 btnCollapseSidebar: document.getElementById('btn-collapse-sidebar'),
                 btnExpandSidebar: document.getElementById('btn-expand-sidebar'),
                 btnQuickSinglePage: document.getElementById('btn-quick-single-page'),
+                btnQuickFullscreen: document.getElementById('btn-quick-fullscreen'),
+                btnSidebarFullscreen: document.getElementById('btn-sidebar-fullscreen'),
                 collapsedSidebarControls: document.getElementById('collapsed-sidebar-controls'),
                 readerSidebar: document.getElementById('reader-sidebar'),
                 staticPageFrame: document.getElementById('static-page-frame'),
@@ -979,6 +1004,9 @@ Ao substituir a rolagem contínua pela paginação estática combinada ao isolam
                 btnReset202020: document.getElementById('btn-reset-202020'),
                 btnTest202020: document.getElementById('btn-test-202020'),
                 btnBackToEditor: document.getElementById('btn-back-to-editor'),
+                
+                btnToggleBrownNoise: document.getElementById('btn-toggle-brown-noise'),
+                brownNoiseBars: document.getElementById('brown-noise-bars'),
 
                 editorView: document.getElementById('editor-view'),
                 readerView: document.getElementById('reader-view'),
@@ -1071,6 +1099,101 @@ Ao substituir a rolagem contínua pela paginação estática combinada ao isolam
                 osc.start(now);
                 osc.stop(now + 0.8);
             } catch (e) {}
+        }
+
+        function toggleBrownNoise() {
+            if (state.isBrownNoisePlaying) {
+                if (state.brownNoiseNode) {
+                    state.brownNoiseNode.disconnect();
+                    state.brownNoiseNode = null;
+                }
+                if (state.brownNoiseFilter) {
+                    state.brownNoiseFilter.disconnect();
+                    state.brownNoiseFilter = null;
+                }
+                if (state.audioCtx) {
+                    state.audioCtx.suspend();
+                }
+                state.isBrownNoisePlaying = false;
+                
+                els.btnToggleBrownNoise.classList.remove('ergo-btn-primary');
+                els.btnToggleBrownNoise.classList.add('ergo-btn-secondary');
+                els.brownNoiseBars.classList.add('hidden');
+            } else {
+                if (!state.audioCtx) {
+                    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                state.audioCtx.resume();
+                
+                const bufferSize = 4096;
+                let lastOut = 0;
+                
+                // Gerador nativo de som via Web Audio API para ruído marrom
+                state.brownNoiseNode = state.audioCtx.createScriptProcessor(bufferSize, 1, 1);
+                state.brownNoiseNode.onaudioprocess = function(e) {
+                    const output = e.outputBuffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        const white = Math.random() * 2 - 1;
+                        // Matemática ajustada: integra mais suavemente para focar nas baixas frequências
+                        output[i] = (lastOut + (0.01 * white)) / 1.01;
+                        lastOut = output[i];
+                        output[i] *= 5.0; // Compensação de ganho para o novo espectro
+                    }
+                };
+                
+                // Filtro passa-baixa nativo para remover a estridência e deixar o som aveludado (estilo cabine de avião)
+                state.brownNoiseFilter = state.audioCtx.createBiquadFilter();
+                state.brownNoiseFilter.type = 'lowpass';
+                state.brownNoiseFilter.frequency.value = 300; // Frequência de corte baixa para um som grave e profundo
+                
+                state.brownNoiseNode.connect(state.brownNoiseFilter);
+                state.brownNoiseFilter.connect(state.audioCtx.destination);
+                state.isBrownNoisePlaying = true;
+                
+                els.btnToggleBrownNoise.classList.add('ergo-btn-primary');
+                els.btnToggleBrownNoise.classList.remove('ergo-btn-secondary');
+                els.brownNoiseBars.classList.remove('hidden');
+            }
+        }
+
+        function toggleFullscreen() {
+            try {
+                if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                    const docEl = document.documentElement;
+                    let promise;
+                    
+                    if (docEl.requestFullscreen) {
+                        promise = docEl.requestFullscreen();
+                    } else if (docEl.webkitRequestFullscreen) {
+                        promise = docEl.webkitRequestFullscreen();
+                    }
+                    
+                    // Captura e trata a rejeição da promessa (ex: bloqueio por iframe sem permissão)
+                    if (promise !== undefined) {
+                        promise.catch(err => {
+                            console.warn("Erro ao tentar tela cheia:", err);
+                            showToast("A tela cheia foi bloqueada pelas permissões do navegador neste ambiente.");
+                        });
+                    }
+                } else {
+                    let promise;
+                    
+                    if (document.exitFullscreen) {
+                        promise = document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        promise = document.webkitExitFullscreen();
+                    }
+                    
+                    if (promise !== undefined) {
+                        promise.catch(err => {
+                            console.warn("Erro ao sair da tela cheia:", err);
+                        });
+                    }
+                }
+            } catch (error) {
+                console.warn("Erro sincrono na API de tela cheia:", error);
+                showToast("Recurso de tela cheia não suportado ou bloqueado.");
+            }
         }
 
         function showToast(message) {
@@ -2573,6 +2696,8 @@ Ao substituir a rolagem contínua pela paginação estática combinada ao isolam
             els.btnLayoutSingle.addEventListener('click', () => setDoublePageMode(false, true));
             els.btnLayoutDouble.addEventListener('click', () => setDoublePageMode(true, true));
             els.btnQuickSinglePage.addEventListener('click', () => setDoublePageMode(false, true));
+            if (els.btnQuickFullscreen) els.btnQuickFullscreen.addEventListener('click', toggleFullscreen);
+            if (els.btnSidebarFullscreen) els.btnSidebarFullscreen.addEventListener('click', toggleFullscreen);
             els.btnCollapseSidebar.addEventListener('click', () => setSidebarCollapsed(true));
             els.btnExpandSidebar.addEventListener('click', () => setSidebarCollapsed(false));
 
@@ -2688,6 +2813,7 @@ Ao substituir a rolagem contínua pela paginação estática combinada ao isolam
             els.btnReset202020.addEventListener('click', resetOcularTimer);
             els.btnTest202020.addEventListener('click', trigger202020BreakLock);
             els.btnUnlockReading.addEventListener('click', unlockAfter202020Break);
+            els.btnToggleBrownNoise.addEventListener('click', toggleBrownNoise);
 
             // Ouvintes da Recuperação Ativa
             els.btnDoActiveRecall.addEventListener('click', openActiveRecallWriter);
